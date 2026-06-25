@@ -268,3 +268,308 @@ def reset_root_state_uniform(
         # set into the physics simulation
         asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=non_pit_env_ids)
         asset.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)
+
+
+
+def reset_root_state_uniform_with_box(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    velocity_range: dict[str, tuple[float, float]],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg_box: SceneEntityCfg = SceneEntityCfg("box"),
+
+):
+    """Reset the asset root state to a random position and velocity uniformly within the given ranges.
+
+    This function randomizes the root position and velocity of the asset.
+
+    * It samples the root position from the given ranges and adds them to the default root position, before setting
+      them into the physics simulation.
+    * It samples the root orientation from the given ranges and sets them into the physics simulation.
+    * It samples the root velocity from the given ranges and sets them into the physics simulation.
+
+    The function takes a dictionary of pose and velocity ranges for each axis and rotation. The keys of the
+    dictionary are ``x``, ``y``, ``z``, ``roll``, ``pitch``, and ``yaw``. The values are tuples of the form
+    ``(min, max)``. If the dictionary does not contain a key, the position or velocity is set to zero for that axis.
+
+    Note: If "pits" terrain exists, environments on pit terrain will be reset to default state without random
+    perturbations to avoid the robot falling into the pit.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject | Articulation = env.scene[asset_cfg.name]
+    asset_box: RigidObject | Articulation = env.scene[asset_cfg_box.name]
+
+    # Separate pit and non-pit environments
+    # Check which environments are assigned to pit terrain (not random reset)
+    assigned_to_pits = is_env_assigned_to_terrain(env, "pits")
+    pit_env_ids = env_ids[assigned_to_pits[env_ids]]
+    non_pit_env_ids = env_ids[~assigned_to_pits[env_ids]]
+    
+    box_pose_range =  {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}
+    box_range_list = [box_pose_range.get(key, (0.0, 0.0)) for key in ["x", "y"]]
+    box_ranges = torch.tensor(box_range_list, device=asset.device)
+
+    # Reset pit environments to default state (no random perturbations)
+    if len(pit_env_ids) > 0:
+        root_states = asset.data.default_root_state[pit_env_ids].clone()
+        positions = root_states[:, 0:3] + env.scene.env_origins[pit_env_ids]
+        orientations = root_states[:, 3:7]
+        velocities = torch.zeros_like(root_states[:, 7:13])
+        asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=pit_env_ids)
+        asset.write_root_velocity_to_sim(velocities, env_ids=pit_env_ids)
+
+        positions_box = positions + torch.tensor([0.5, 2.0, 0.0], device=asset.device)  # Adjust the box position as needed
+        # print(f"positions_box: {positions_box.shape}","2222222222222222222",pit_env_ids)
+        asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=pit_env_ids)
+        asset_box.write_root_velocity_to_sim(velocities, env_ids=pit_env_ids)   
+    # Reset non-pit environments with random perturbations
+    if len(non_pit_env_ids) > 0:
+        root_states = asset.data.default_root_state[non_pit_env_ids].clone()
+
+        # poses
+        range_list = [pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        box_rand_samples = math_utils.sample_uniform(
+            box_ranges[:, 0], box_ranges[:, 1], (len(non_pit_env_ids), 2), device=asset.device
+        )
+        ranges = torch.tensor(range_list, device=asset.device)
+        rand_samples = math_utils.sample_uniform(
+            ranges[:, 0], ranges[:, 1], (len(non_pit_env_ids), 6), device=asset.device
+        )
+
+        positions = root_states[:, 0:3] + env.scene.env_origins[non_pit_env_ids] + rand_samples[:, 0:3]
+        orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
+        orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
+        # velocities
+        range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        ranges = torch.tensor(range_list, device=asset.device)
+        rand_samples = math_utils.sample_uniform(
+            ranges[:, 0], ranges[:, 1], (len(non_pit_env_ids), 6), device=asset.device
+        )
+
+        velocities = root_states[:, 7:13] + rand_samples
+
+        # set into the physics simulation
+        asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=non_pit_env_ids)
+        asset.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)
+
+        positions_box = positions + torch.tensor([0.500, 2.0, 0.0], device=asset.device)  # Adjust the box position as needed
+        # print(f"positions_box: {positions}, box:{positions_box}","2222223332222222222222", non_pit_env_ids)
+        positions_box[:, 0] += box_rand_samples[:, 0]
+        positions_box[:, 1] += box_rand_samples[:, 1]
+        asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=non_pit_env_ids)
+        asset_box.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)  
+        # print(asset_box.data.root_pos_w[:,:2]) 
+
+
+
+
+
+def reset_root_state_uniform_with_box3(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    velocity_range: dict[str, tuple[float, float]],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg_box: SceneEntityCfg = SceneEntityCfg("box"),
+
+):
+    """Reset the asset root state to a random position and velocity uniformly within the given ranges.
+    Box spawns randomly in FRONT half annulus of robot, exclude rear 180° area, with collision avoidance margin.
+    Box size=(0.8, 1.0, 0.6), robot approx 1.098×0.55×0.758.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject | Articulation = env.scene[asset_cfg.name]
+    asset_box: RigidObject | Articulation = env.scene[asset_cfg_box.name]
+
+    # Separate pit and non-pit environments
+    assigned_to_pits = is_env_assigned_to_terrain(env, "pits")
+    pit_env_ids = env_ids[assigned_to_pits[env_ids]]
+    non_pit_env_ids = env_ids[~assigned_to_pits[env_ids]]
+    
+    # Box local small perturbation range
+    box_pose_range =  {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}
+    box_range_list = [box_pose_range.get(key, (0.0, 0.0)) for key in ["x", "y"]]
+    box_ranges = torch.tensor(box_range_list, device=asset.device)
+
+    # Spawn box in FRONT annulus around robot: min distance to avoid collision
+    min_spawn_radius = 1.3   # safety distance robot-box
+    max_spawn_radius = 3.0   # max distance from robot
+    # Only sample FRONT half circle: -90° ~ +90° (-π/2 ~ π/2), exclude rear half
+    theta_min = -torch.pi / 2
+    theta_max = torch.pi / 2
+
+    num_pit = len(pit_env_ids)
+    num_nonpit = len(non_pit_env_ids)
+
+    # ---------------------- Pit environments ----------------------
+    if num_pit > 0:
+        root_states = asset.data.default_root_state[pit_env_ids].clone()
+        positions = root_states[:, 0:3] + env.scene.env_origins[pit_env_ids]
+        orientations = root_states[:, 3:7]
+        velocities = torch.zeros_like(root_states[:, 7:13])
+        asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=pit_env_ids)
+        asset.write_root_velocity_to_sim(velocities, env_ids=pit_env_ids)
+
+        # Random polar coordinate ONLY front half circle
+        theta_pit = math_utils.sample_uniform(theta_min, theta_max, (num_pit,), device=asset.device)
+        r_pit = math_utils.sample_uniform(min_spawn_radius, max_spawn_radius, (num_pit,), device=asset.device)
+        box_offset_x = r_pit * torch.cos(theta_pit)
+        box_offset_y = r_pit * torch.sin(theta_pit)
+
+        # Small xy jitter for box
+        box_rand_pit = math_utils.sample_uniform(
+            box_ranges[:, 0], box_ranges[:, 1], (num_pit, 2), device=asset.device
+        )
+        positions_box = positions.clone()
+        positions_box[:, 0] += box_offset_x + box_rand_pit[:, 0]
+        positions_box[:, 1] += box_offset_y + box_rand_pit[:, 1]
+
+        asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=pit_env_ids)
+        asset_box.write_root_velocity_to_sim(velocities, env_ids=pit_env_ids)   
+    
+    # ---------------------- Non-pit environments ----------------------
+    if num_nonpit > 0:
+        root_states = asset.data.default_root_state[non_pit_env_ids].clone()
+
+        # Robot pose randomization
+        range_list = [pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        ranges = torch.tensor(range_list, device=asset.device)
+        rand_samples = math_utils.sample_uniform(
+            ranges[:, 0], ranges[:, 1], (num_nonpit, 6), device=asset.device
+        )
+
+        positions = root_states[:, 0:3] + env.scene.env_origins[non_pit_env_ids] + rand_samples[:, 0:3]
+        orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
+        orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
+
+        # Robot velocity randomization
+        vel_range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        vel_ranges = torch.tensor(vel_range_list, device=asset.device)
+        vel_rand_samples = math_utils.sample_uniform(
+            vel_ranges[:, 0], vel_ranges[:, 1], (num_nonpit, 6), device=asset.device
+        )
+        velocities = root_states[:, 7:13] + vel_rand_samples
+
+        asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=non_pit_env_ids)
+        asset.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)
+
+        # Random polar offset ONLY front half circle
+        theta_nonpit = math_utils.sample_uniform(theta_min, theta_max, (num_nonpit,), device=asset.device)
+        r_nonpit = math_utils.sample_uniform(min_spawn_radius, max_spawn_radius, (num_nonpit,), device=asset.device)
+        box_offset_x = r_nonpit * torch.cos(theta_nonpit)
+        box_offset_y = r_nonpit * torch.sin(theta_nonpit)
+
+        # Box local xy small noise
+        box_rand_samples = math_utils.sample_uniform(
+            box_ranges[:, 0], box_ranges[:, 1], (num_nonpit, 2), device=asset.device
+        )
+        positions_box = positions.clone()
+        positions_box[:, 0] += box_offset_x + box_rand_samples[:, 0]
+        positions_box[:, 1] += box_offset_y + box_rand_samples[:, 1]
+
+        asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=non_pit_env_ids)
+        asset_box.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)
+
+
+def reset_root_state_uniform_with_box2(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    velocity_range: dict[str, tuple[float, float]],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asset_cfg_box: SceneEntityCfg = SceneEntityCfg("box"),
+
+):
+    """Reset the asset root state to a random position and velocity uniformly within the given ranges.
+    Box spawns randomly around robot in annular area, with collision avoidance margin.
+    Box size=(0.8, 1.0, 0.6), robot approx 1.098×0.55×0.758.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject | Articulation = env.scene[asset_cfg.name]
+    asset_box: RigidObject | Articulation = env.scene[asset_cfg_box.name]
+
+    # Separate pit and non-pit environments
+    assigned_to_pits = is_env_assigned_to_terrain(env, "pits")
+    pit_env_ids = env_ids[assigned_to_pits[env_ids]]
+    non_pit_env_ids = env_ids[~assigned_to_pits[env_ids]]
+    
+    # Box local small perturbation range
+    box_pose_range =  {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}
+    box_range_list = [box_pose_range.get(key, (0.0, 0.0)) for key in ["x", "y"]]
+    box_ranges = torch.tensor(box_range_list, device=asset.device)
+
+    # Spawn box in annulus around robot: min distance to avoid collision
+    min_spawn_radius = 1.3   # safety distance robot-box
+    max_spawn_radius = 3.0   # max distance from robot
+    num_pit = len(pit_env_ids)
+    num_nonpit = len(non_pit_env_ids)
+
+    # ---------------------- Pit environments ----------------------
+    if num_pit > 0:
+        root_states = asset.data.default_root_state[pit_env_ids].clone()
+        positions = root_states[:, 0:3] + env.scene.env_origins[pit_env_ids]
+        orientations = root_states[:, 3:7]
+        velocities = torch.zeros_like(root_states[:, 7:13])
+        asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=pit_env_ids)
+        asset.write_root_velocity_to_sim(velocities, env_ids=pit_env_ids)
+
+        # Random polar coordinate around robot
+        theta_pit = math_utils.sample_uniform(0.0, 2 * torch.pi, (num_pit,), device=asset.device)
+        r_pit = math_utils.sample_uniform(min_spawn_radius, max_spawn_radius, (num_pit,), device=asset.device)
+        box_offset_x = r_pit * torch.cos(theta_pit)
+        box_offset_y = r_pit * torch.sin(theta_pit)
+
+        # Small xy jitter for box
+        box_rand_pit = math_utils.sample_uniform(
+            box_ranges[:, 0], box_ranges[:, 1], (num_pit, 2), device=asset.device
+        )
+        positions_box = positions.clone()
+        positions_box[:, 0] += box_offset_x + box_rand_pit[:, 0]
+        positions_box[:, 1] += box_offset_y + box_rand_pit[:, 1]
+
+        asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=pit_env_ids)
+        asset_box.write_root_velocity_to_sim(velocities, env_ids=pit_env_ids)   
+    
+    # ---------------------- Non-pit environments ----------------------
+    if num_nonpit > 0:
+        root_states = asset.data.default_root_state[non_pit_env_ids].clone()
+
+        # Robot pose randomization
+        range_list = [pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        ranges = torch.tensor(range_list, device=asset.device)
+        rand_samples = math_utils.sample_uniform(
+            ranges[:, 0], ranges[:, 1], (num_nonpit, 6), device=asset.device
+        )
+
+        positions = root_states[:, 0:3] + env.scene.env_origins[non_pit_env_ids] + rand_samples[:, 0:3]
+        orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
+        orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
+
+        # Robot velocity randomization
+        vel_range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        vel_ranges = torch.tensor(vel_range_list, device=asset.device)
+        vel_rand_samples = math_utils.sample_uniform(
+            vel_ranges[:, 0], vel_ranges[:, 1], (num_nonpit, 6), device=asset.device
+        )
+        velocities = root_states[:, 7:13] + vel_rand_samples
+
+        asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=non_pit_env_ids)
+        asset.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)
+
+        # Random polar offset around robot
+        theta_nonpit = math_utils.sample_uniform(0.0, 2 * torch.pi, (num_nonpit,), device=asset.device)
+        r_nonpit = math_utils.sample_uniform(min_spawn_radius, max_spawn_radius, (num_nonpit,), device=asset.device)
+        box_offset_x = r_nonpit * torch.cos(theta_nonpit)
+        box_offset_y = r_nonpit * torch.sin(theta_nonpit)
+
+        # Box local xy small noise
+        box_rand_samples = math_utils.sample_uniform(
+            box_ranges[:, 0], box_ranges[:, 1], (num_nonpit, 2), device=asset.device
+        )
+        positions_box = positions.clone()
+        positions_box[:, 0] += box_offset_x + box_rand_samples[:, 0]
+        positions_box[:, 1] += box_offset_y + box_rand_samples[:, 1]
+
+        asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=non_pit_env_ids)
+        asset_box.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)

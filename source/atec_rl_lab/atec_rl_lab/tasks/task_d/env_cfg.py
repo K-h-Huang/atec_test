@@ -102,7 +102,7 @@ class TaskDEnvCfg(BaseEnvCfg):
                 update_period=lidar_sensor.update_period,
                 pattern_cfg=lidar_sensor.pattern_cfg,
                 max_distance=lidar_sensor.max_distance,
-                debug_vis=lidar_sensor.debug_vis,
+                debug_vis= True,#lidar_sensor.debug_vis,
                 offset=lidar_sensor.offset,
                 attach_yaw_only=lidar_sensor.attach_yaw_only,
                 ray_alignment=lidar_sensor.ray_alignment,

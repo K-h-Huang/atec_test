@@ -6,6 +6,7 @@ from isaaclab.utils import configclass
 from atec_rl_lab.train.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 
 from atec_rl_lab.assets.robots import UNITREE_B2_CFG
+from isaaclab.sensors import MultiMeshRayCasterCfg
 
 
 @configclass
@@ -31,12 +32,37 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
 
         # ------------------------------Observations------------------------------
-        self.observations.policy.base_lin_vel.scale = 2.0
+        if self.scene.lidar_sensor is not None:
+            lidar_sensor = self.scene.lidar_sensor
+            self.scene.lidar_sensor = MultiMeshRayCasterCfg(
+                prim_path=lidar_sensor.prim_path,
+                update_period=lidar_sensor.update_period,
+                pattern_cfg=lidar_sensor.pattern_cfg,
+                max_distance=lidar_sensor.max_distance,
+                debug_vis= True,#lidar_sensor.debug_vis,
+                offset=lidar_sensor.offset,
+                attach_yaw_only=lidar_sensor.attach_yaw_only,
+                ray_alignment=lidar_sensor.ray_alignment,
+                drift_range=lidar_sensor.drift_range,
+                ray_cast_drift_range=lidar_sensor.ray_cast_drift_range,
+                visualizer_cfg=lidar_sensor.visualizer_cfg,
+                mesh_prim_paths=[
+                    "/World/ground",
+                    # MultiMeshRayCasterCfg.RaycastTargetCfg(
+                    #     prim_expr="{ENV_REGEX_NS}/Box",
+                    #     is_shared=True,
+                    #     track_mesh_transforms=True,
+                    # ),
+                ],
+            )
+
+
+        # self.observations.policy.base_lin_vel.scale = 2.0
         self.observations.policy.base_ang_vel.scale = 0.25
         self.observations.policy.joint_pos.scale = 1.0
         self.observations.policy.joint_vel.scale = 0.05
-        self.observations.policy.base_lin_vel = None
-        self.observations.policy.height_scan = None
+        # self.observations.policy.base_lin_vel = None
+        # self.observations.policy.height_scan = None
         self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
         self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names
 
@@ -52,8 +78,8 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "x": (-0.5, 0.5),
                 "y": (-0.5, 0.5),
                 "z": (0.0, 0.2),
-                "roll": (-3.14, 3.14),
-                "pitch": (-3.14, 3.14),
+                "roll": (-1.0, 1.0),
+                "pitch": (-1.0, 1.0),
                 "yaw": (-3.14, 3.14),
             },
             "velocity_range": {
@@ -80,7 +106,7 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Root penalties
         self.rewards.lin_vel_z_l2.weight = -2.0
-        self.rewards.ang_vel_xy_l2.weight = -0.05
+        self.rewards.ang_vel_xy_l2.weight = -0.1
         self.rewards.flat_orientation_l2.weight = 0
         self.rewards.base_height_l2.weight = 0
         self.rewards.base_height_l2.params["target_height"] = 0.53
@@ -98,7 +124,7 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_power.weight = -1e-5
         self.rewards.stand_still.weight = -2.0
         self.rewards.joint_pos_penalty.weight = -1.0
-        self.rewards.joint_mirror.weight = -0.05
+        self.rewards.joint_mirror.weight = -0.1
         self.rewards.joint_mirror.params["mirror_joints"] = [
             ["FR_(hip|thigh|calf).*", "RL_(hip|thigh|calf).*"],
             ["FL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
@@ -115,7 +141,7 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Velocity-tracking rewards
         self.rewards.track_lin_vel_xy_exp.weight = 3.0
-        self.rewards.track_ang_vel_z_exp.weight = 1.5
+        self.rewards.track_ang_vel_z_exp.weight = 3.0
 
         # Others
         self.rewards.feet_air_time.weight = 0
@@ -149,12 +175,12 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None
 
         # ------------------------------Curriculums------------------------------
-        # self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
-        # self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
-        self.curriculum.command_levels_lin_vel = None
-        self.curriculum.command_levels_ang_vel = None
+        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
+        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
+        # self.curriculum.command_levels_lin_vel = None
+        # self.curriculum.command_levels_ang_vel = None
 
         # ------------------------------Commands------------------------------
-        # self.commands.base_velocity.ranges.lin_vel_x = (-2.0, 2.0)
-        # self.commands.base_velocity.ranges.lin_vel_y = (-2.0, 2.0)
-        # self.commands.base_velocity.ranges.ang_vel_z = (-1.5, 1.5)
+        self.commands.base_velocity.ranges.lin_vel_x = (-2.0, 2)
+        self.commands.base_velocity.ranges.lin_vel_y = (-2.0, 2.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.5, 1.5)

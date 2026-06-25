@@ -108,12 +108,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # remove random pushing
     env_cfg.events.randomize_apply_external_force_torque = None
     env_cfg.events.push_robot = None
-    env_cfg.curriculum.command_levels_lin_vel = None
-    env_cfg.curriculum.command_levels_ang_vel = None
+    # env_cfg.curriculum.command_levels_lin_vel = None
+    # env_cfg.curriculum.command_levels_ang_vel = None
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
-    log_root_path = os.path.abspath(log_root_path)
+        # 修改权重地址到nas
+    if agent_cfg.experiment_name == "":
+        log_root_path = os.path.join("/mnt/nas/weight_g1/logs", "rsl_rl", args_cli.task)
+    else:
+        log_root_path = os.path.join("/mnt/nas/weight_g1/logs", "rsl_rl", agent_cfg.experiment_name)
+
+    # log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     if args_cli.use_pretrained_checkpoint:
         resume_path = get_published_pretrained_checkpoint("rsl_rl", task_name)

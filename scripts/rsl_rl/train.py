@@ -141,7 +141,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
-    log_root_path = os.path.abspath(log_root_path)
+    if agent_cfg.experiment_name == "":
+        log_root_path = os.path.join("/mnt/nas/weight_g1/logs", "rsl_rl", args_cli.task)
+    else:
+        log_root_path = os.path.join("/mnt/nas/weight_g1/logs", "rsl_rl", agent_cfg.experiment_name)
+
+
+
+    # log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs: {time-stamp}_{run_name}
     log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

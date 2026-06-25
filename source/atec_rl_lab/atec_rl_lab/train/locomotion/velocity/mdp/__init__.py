@@ -10,3 +10,6 @@ from atec_rl_lab.train.locomotion.velocity.mdp.events import *  # noqa: F401, F4
 from .observations import *  # noqa: F401, F403
 from atec_rl_lab.train.locomotion.velocity.mdp.rewards import *  # noqa: F401, F403
 from .utils import *  # noqa: F401, F403
+from atec_rl_lab.train.locomotion.velocity.mdp.pre_trained_policy_action import *  # noqa: F401, F403
+# from .
+# from .pretrained_policy_action import *  # noqa: F401, F403

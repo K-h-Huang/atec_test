@@ -5,13 +5,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
+from isaaclab.assets import Articulation, RigidObject
 
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import MultiMeshRayCasterCfg
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 
+    from isaaclab.sensors import Camera, RayCasterCamera, TiledCamera
 
 def joint_pos_rel_without_wheel(
     env: ManagerBasedEnv,
@@ -32,3 +35,29 @@ def phase(env: ManagerBasedRLEnv, cycle_time: float) -> torch.Tensor:
     phase = env.episode_length_buf[:, None] * env.step_dt / cycle_time
     phase_tensor = torch.cat([torch.sin(2 * torch.pi * phase), torch.cos(2 * torch.pi * phase)], dim=-1)
     return phase_tensor
+
+def obs_box_rel_robot(env: ManagerBasedRLEnv,
+                      box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+                      robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """
+    Observation term: box position relative to robot world frame (raw, no normalization).
+    Output shape: [num_envs, 3] = (box_x - robot_x, box_y - robot_y, box_z - robot_z)
+    """
+    box: RigidObject = env.scene[box_cfg.name]
+    robot: RigidObject = env.scene[robot_cfg.name]
+
+    box_w = box.data.root_pos_w    # [N,3] box world center
+    robot_w = robot.data.root_pos_w# [N,3] robot world center
+
+    rel_pos = box_w - robot_w
+    return rel_pos
+
+
+# def visualizable_image(
+#     env: ManagerBasedEnv,
+#     sensor_cfg: SceneEntityCfg = SceneEntityCfg("camera") )-> torch.Tensor:
+    
+#     sensor: TiledCamera | Camera | RayCasterCamera = (
+#         env.scene.sensors[sensor_cfg.name]
+#     )
+#     data = sensor.data

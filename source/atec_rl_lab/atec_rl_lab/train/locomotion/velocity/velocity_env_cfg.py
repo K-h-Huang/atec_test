@@ -24,7 +24,7 @@ from atec_rl_lab.assets import ATEC_ASSETS_MODEL_DIR
 ##
 # Pre-defined configs
 ##
-from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+from isaaclab.terrains.config.rough2 import ROUGH_TERRAINS_CFG  # isort: skip
 
 
 ##
@@ -85,6 +85,20 @@ class MySceneCfg(InteractiveSceneCfg):
             texture_file=f"{ATEC_ASSETS_MODEL_DIR}/scene/kloofendal_43d_clear_puresky_4k.hdr",
         ),
     )
+    lidar_sensor = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base_link",
+        update_period=0.1,
+        pattern_cfg=patterns.LidarPatternCfg(
+            vertical_fov_range=(-20.0, 20.0),
+            horizontal_fov_range=(-180.0, 180.0),
+            horizontal_res=1.0,
+            channels=16,
+        ),
+        max_distance=10.0,
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
+
 
 
 ##
@@ -128,12 +142,12 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(
-            func=mdp.base_lin_vel,
-            noise=Unoise(n_min=-0.1, n_max=0.1),
-            clip=(-100.0, 100.0),
-            scale=1.0,
-        )
+        # base_lin_vel = ObsTerm(
+        #     func=mdp.base_lin_vel,
+        #     noise=Unoise(n_min=-0.1, n_max=0.1),
+        #     clip=(-100.0, 100.0),
+        #     scale=1.0,
+        # )
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
             noise=Unoise(n_min=-0.2, n_max=0.2),
@@ -171,13 +185,13 @@ class ObservationsCfg:
             clip=(-100.0, 100.0),
             scale=1.0,
         )
-        height_scan = ObsTerm(
-            func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-            noise=Unoise(n_min=-0.1, n_max=0.1),
-            clip=(-1.0, 1.0),
-            scale=1.0,
-        )
+        # height_scan = ObsTerm(
+        #     func=mdp.height_scan,
+        #     params={"sensor_cfg": SceneEntityCfg("lidar_sensor")},
+        #     noise=Unoise(n_min=-0.1, n_max=0.1),
+        #     clip=(-1.0, 1.0),
+        #     scale=1.0,
+        # )
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -391,6 +405,11 @@ class RewardsCfg:
     )
 
     # Joint penalties
+    # pos_penalty = RewTerm(
+    #     func=mdp.pos_penalty, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
+    # )
+
+
     joint_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2, weight=0.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
     )
@@ -646,7 +665,7 @@ class TerminationsCfg:
     # command_resample
     terrain_out_of_bounds = DoneTerm(
         func=mdp.terrain_out_of_bounds,
-        params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 3.0},
+        params={"asset_cfg": SceneEntityCfg("robot"), "distance_buffer": 0.0},
         time_out=True,
     )
 

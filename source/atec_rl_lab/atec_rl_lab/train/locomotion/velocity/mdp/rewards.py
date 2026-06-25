@@ -47,6 +47,162 @@ def track_ang_vel_z_exp(
     return reward
 
 
+
+def track_ang_vel_z_exp(
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of angular velocity commands (yaw) using exponential kernel."""
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # compute the error
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
+    reward = torch.exp(-ang_vel_error / std**2)
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+# def track_box_x_target_exp(
+#     env: ManagerBasedRLEnv, 
+#     std: float = 1.2, 
+#     asset_cfg: SceneEntityCfg = SceneEntityCfg("box")
+# ) -> torch.Tensor:
+#     """
+#     Reward for pushing box toward x=-0.9, y limited to [0.6, 3.4].
+#     Big penalty when box x < -1.0.
+#     Higher reward the closer box x is to -0.9.
+#     """
+#     # 提取箱子物体，类型提示对齐原代码
+#     box: RigidObject = env.scene[asset_cfg.name]
+#     box_pos_w = box.data.root_pos_w  # [num_envs, 3] world坐标
+    
+#     target_x = 0.0
+#     box_x = box_pos_w[:, 0]
+#     box_y = box_pos_w[:, 1]
+
+#     # 1. X方向误差：距离目标-0.9的平方误差
+#     # print(box_x,"===============")
+#     # print(box_y,"==============")
+#     x_error_sq = torch.square(box_x - target_x)
+#     reward_base = torch.exp(-x_error_sq / (std ** 2))
+
+#     # 2. Y轴约束掩码：仅y ∈ [0.6, 3.4]保留奖励，外部乘衰减系数
+#     y_in_range_mask = (box_y <= 0.1) & (box_y >= -3.4)
+#     y_scale = torch.where(y_in_range_mask, torch.ones_like(reward_base), torch.full_like(reward_base, 0.05))
+#     reward_base *= y_scale
+
+#     # 3. X < -1.0 大幅惩罚，奖励断崖式降低
+#     x_over_left_mask = box_x < -1.0
+#     x_left_penalty = torch.where(x_over_left_mask, torch.full_like(reward_base, 0.5), torch.ones_like(reward_base))
+#     reward = reward_base * x_left_penalty
+#     # print(reward, x_over_left_mask)
+#     return reward
+
+def action_xy_target_reg(env: ManagerBasedRLEnv, target: float = 1.5) -> torch.Tensor:
+    """
+    Penalize XY action deviate from target magnitude 1.5,
+    discourage too small / too large xy command output.
+    Only regularize first two action dims (x,y).
+    """
+    act = env.action_manager.action
+    # 只取xy两维动作
+    act_xy = act[:, :2]
+    # xy动作平方和
+    xy_sq_sum = torch.sum(torch.abs(act_xy), dim=1)
+    # 偏离目标幅值1.5的平方损失，过小过大都会产生惩罚
+    loss = torch.abs(xy_sq_sum - target ** 2)
+    return loss
+
+
+def track_box_x_target_exp(
+    env: ManagerBasedRLEnv, 
+    std: float = 1.8, 
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("box")
+) -> torch.Tensor:
+    """
+    Reward for pushing box toward x=0.0, y soft range [-3.4, 0.1] (smooth decay to avoid sparse reward).
+    Mild penalty when box x < -1.0.
+    Higher reward the closer box x is to 0.0.
+    """
+    box: RigidObject = env.scene[asset_cfg.name]
+    box_pos_w = box.data.root_pos_w  # [num_envs, 3] world坐标
+    
+    target_x = 0.0
+    box_x = box_pos_w[:, 0]
+    box_y = box_pos_w[:, 1]
+
+    # 1. X方向指数跟踪，std放大到1.8，远距离保留梯度
+    x_error_sq = torch.square(box_x - target_x)
+    reward_base = torch.exp(-x_error_sq / (std ** 2))
+
+    # 2. Y轴平滑衰减，替代硬掩码断崖惩罚（核心解决稀疏）
+    y_upper_bound = 0.1
+    y_lower_bound = -3.4
+    y_out_upper = torch.clamp(box_y - y_upper_bound, min=0.0)  # y超过0.1的偏移量
+    y_out_lower = torch.clamp(y_lower_bound - box_y, min=0.0)  # y低于-3.4的偏移量
+    y_out_dist = torch.maximum(y_out_upper, y_out_lower)
+    # 随y偏离距离指数衰减，不会直接砍死，偏离越多缓慢降低
+    y_scale = torch.exp(-y_out_dist / 2.0)
+    reward_base *= y_scale
+
+    # 3. X < -1.0 轻度惩罚，从0.5上调到0.7，不要过度压制初始左侧箱子
+    x_over_left_mask = box_x < -1.0
+    x_left_penalty = torch.where(x_over_left_mask, torch.full_like(reward_base, 0.7), torch.ones_like(reward_base))
+    reward = reward_base * x_left_penalty
+
+    return reward
+
+def track_robot_x_when_box_past_minus_05_exp(
+    env: ManagerBasedRLEnv, 
+    std: float=1.5, 
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """
+    Reward only when box x > -0.5: robot gets higher reward the closer its x is to 2.2.
+    If box x <= -0.5, reward is 0.
+    Higher reward the closer robot x is to target 2.2 after box passes x=-0.5.
+    """
+    # 获取箱子与机器人物体
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_x = box.data.root_pos_w[:, 0]
+    robot_x = robot.data.root_pos_w[:, 0]
+    robot_target_x = 2.2
+
+    # 1. 机器人距离目标2.2的指数跟踪基础奖励
+    x_error_sq = torch.square(robot_x - robot_target_x)
+    reward_base = torch.exp(-x_error_sq / (std ** 2))
+
+    # 2. 箱子x > -0.5才生效奖励，否则直接置0
+    box_pass_mask = box_x > -0.5
+    box_scale = torch.where(box_pass_mask, torch.ones_like(reward_base), torch.zeros_like(reward_base))
+
+    # 最终奖励
+    reward = reward_base * box_scale
+
+    return reward
+
+
+def track_pos_box_exp(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), box_cfg: SceneEntityCfg = SceneEntityCfg("box")
+) -> torch.Tensor:
+    """Reward tracking of angular velocity commands (yaw) using exponential kernel."""
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # compute the error
+    pos = asset.data.root_pos_w[:, :3]
+    box =  env.scene[box_cfg.name]
+    pos_box = box.data.root_pos_w[:, :3]
+    # print(pos,"pos")
+    # print(pos_box,"box")
+
+    # ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
+    # reward = torch.exp(-ang_vel_error / std**2)
+    # reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return torch.zeros((env.num_envs),device= env.device)
+
+
+
 def track_lin_vel_xy_yaw_frame_exp(
     env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
@@ -75,6 +231,69 @@ def track_ang_vel_z_world_exp(
     reward = torch.exp(-ang_vel_error / std**2)
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
     return reward
+
+def track_robot_close_to_box_before_x_minus05_exp(
+    env: ManagerBasedRLEnv,
+    std: float=1.5,
+    safe_gap: float = 0.3,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """
+    Stage1 reward: before box x > -0.5, reward robot for getting close to box (XY plane),
+    add safety margin to avoid collision with box (box half size: X=0.4, Y=0.5).
+    Once box x > -0.5, reward becomes zero.
+    The closer robot XY to box center (outside safe boundary), higher exponential reward.
+    """
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    # World position [num_envs, 3]
+    box_pos = box.data.root_pos_w
+    robot_pos = robot.data.root_pos_w
+
+    box_x, box_y = box_pos[:, 0], box_pos[:, 1]
+    robot_x, robot_y = robot_pos[:, 0], robot_pos[:, 1]
+
+    # Box half size from size=(0.8, 1.0, 0.6): half_x=0.4, half_y=0.5
+    box_half_x = 0.4
+    box_half_y = 0.5
+
+    # XY distance between robot and box center
+    dx = robot_x - box_x
+    dy = robot_y - box_y
+
+    # Min safe distance from box surface (half box + extra safe gap)
+    min_safe_dx = box_half_x + safe_gap
+    min_safe_dy = box_half_y + safe_gap
+
+    # Mask: robot is inside dangerous collision zone (too close to box surface)
+    too_close_x = torch.abs(dx) < min_safe_dx
+    too_close_y = torch.abs(dy) < min_safe_dy
+    collision_risk_mask = too_close_x & too_close_y
+
+    # Euclidean distance on XY plane
+    dist_xy_sq = dx ** 2 + dy ** 2
+
+    # Exponential reward based on center distance
+    reward_center = torch.exp(-dist_xy_sq / (std ** 2))
+
+    # Penalize if robot invades safe boundary: multiply small factor
+    reward_safe = torch.where(
+        collision_risk_mask,
+        reward_center * 0.05,
+        reward_center
+    )
+
+    # Only activate reward when box x <= -0.5
+    box_not_passed_mask = box_x <= -0.5
+    final_reward = torch.where(
+        box_not_passed_mask,
+        reward_safe,
+        torch.zeros_like(reward_safe)
+    )
+
+    return final_reward
 
 
 def joint_power(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
