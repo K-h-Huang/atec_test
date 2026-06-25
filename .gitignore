@@ -81,4 +81,4 @@ tests/
 **/tactile_record/*
 **/gelsight_r15_data/*
 
-**/*.zip
+*.zip
