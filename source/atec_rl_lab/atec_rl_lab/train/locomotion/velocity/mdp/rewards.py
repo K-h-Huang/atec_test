@@ -235,15 +235,13 @@ def track_ang_vel_z_world_exp(
 def track_robot_close_to_box_before_x_minus05_exp(
     env: ManagerBasedRLEnv,
     std: float=1.5,
-    safe_gap: float = 0.3,
     box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
     robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """
-    Stage1 reward: before box x > -0.5, reward robot for getting close to box (XY plane),
-    add safety margin to avoid collision with box (box half size: X=0.4, Y=0.5).
+    Stage1 reward: before box x > -0.5, reward robot for getting close to box in the XY plane.
     Once box x > -0.5, reward becomes zero.
-    The closer robot XY to box center (outside safe boundary), higher exponential reward.
+    The closer robot XY to box center, the higher the exponential reward.
     """
     box: RigidObject = env.scene[box_asset_cfg.name]
     robot: RigidObject = env.scene[robot_asset_cfg.name]
@@ -255,42 +253,22 @@ def track_robot_close_to_box_before_x_minus05_exp(
     box_x, box_y = box_pos[:, 0], box_pos[:, 1]
     robot_x, robot_y = robot_pos[:, 0], robot_pos[:, 1]
 
-    # Box half size from size=(0.8, 1.0, 0.6): half_x=0.4, half_y=0.5
-    box_half_x = 0.4
-    box_half_y = 0.5
-
     # XY distance between robot and box center
     dx = robot_x - box_x
     dy = robot_y - box_y
 
-    # Min safe distance from box surface (half box + extra safe gap)
-    min_safe_dx = box_half_x + safe_gap
-    min_safe_dy = box_half_y + safe_gap
-
-    # Mask: robot is inside dangerous collision zone (too close to box surface)
-    too_close_x = torch.abs(dx) < min_safe_dx
-    too_close_y = torch.abs(dy) < min_safe_dy
-    collision_risk_mask = too_close_x & too_close_y
-
     # Euclidean distance on XY plane
     dist_xy_sq = dx ** 2 + dy ** 2
 
-    # Exponential reward based on center distance
-    reward_center = torch.exp(-dist_xy_sq / (std ** 2))
-
-    # Penalize if robot invades safe boundary: multiply small factor
-    reward_safe = torch.where(
-        collision_risk_mask,
-        reward_center * 0.05,
-        reward_center
-    )
+    # Exponential reward based directly on center distance
+    reward_xy = torch.exp(-dist_xy_sq / (std ** 2))
 
     # Only activate reward when box x <= -0.5
     box_not_passed_mask = box_x <= -0.5
     final_reward = torch.where(
         box_not_passed_mask,
-        reward_safe,
-        torch.zeros_like(reward_safe)
+        reward_xy,
+        torch.zeros_like(reward_xy)
     )
 
     return final_reward
