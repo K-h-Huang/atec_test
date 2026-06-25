@@ -519,7 +519,8 @@ class RewardsCfg:
     box_pos = RewTerm(func=mdp.track_box_x_target_exp, weight=15.0)
     robot_pos = RewTerm(func=mdp.track_robot_x_when_box_past_minus_05_exp, weight=10.0)
     robot_pos2 = RewTerm(func=mdp.track_robot_close_to_box_before_x_minus05_exp, weight=10.0)
-    action_rate_l2 = RewTerm(func=mdp.action_xy_target_reg, weight=-0.8)
+    action = RewTerm(func=mdp.action_xy_target_reg, weight=-0.8)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.5)
 
 
 # 机器人位置
@@ -626,11 +627,11 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 visualizer_cfg=lidar_sensor.visualizer_cfg,
                 mesh_prim_paths=[
                     "/World/ground",
-                    # MultiMeshRayCasterCfg.RaycastTargetCfg(
-                    #     prim_expr="{ENV_REGEX_NS}/Box",
-                    #     is_shared=True,
-                    #     track_mesh_transforms=True,
-                    # ),
+                    MultiMeshRayCasterCfg.RaycastTargetCfg(
+                        prim_expr="{ENV_REGEX_NS}/Box",
+                        is_shared=True,
+                        track_mesh_transforms=True,
+                    ),
                 ],
             )
 
