@@ -112,6 +112,17 @@ def action_xy_target_reg(env: ManagerBasedRLEnv, target: float = 1.5) -> torch.T
     return loss
 
 
+def _target_xy_like(reference_xy: torch.Tensor, target_x: float, target_y: float) -> torch.Tensor:
+    """Create a batched XY target tensor on the same device and dtype as the reference."""
+    return reference_xy.new_tensor([target_x, target_y]).unsqueeze(0).expand(reference_xy.shape[0], -1)
+
+
+def _safe_normalize_xy(vec_xy: torch.Tensor, eps: float = 1.0e-6) -> torch.Tensor:
+    """Normalize XY vectors while avoiding division by zero."""
+    norm = torch.linalg.norm(vec_xy, dim=1, keepdim=True).clamp_min(eps)
+    return vec_xy / norm
+
+
 def track_box_x_target_exp(
     env: ManagerBasedRLEnv, 
     std: float = 1.8, 
@@ -125,6 +136,12 @@ def track_box_x_target_exp(
     box: RigidObject = env.scene[asset_cfg.name]
     box_pos_w = box.data.root_pos_w  # [num_envs, 3] world坐标
     
+    box_xy = box_pos_w[:, :2]
+    target_xy = _target_xy_like(box_xy, target_x=0.0, target_y=-1.0)
+    diff_xy = box_xy - target_xy
+    dist_sq = torch.square(diff_xy[:, 0]) + 1.5 * torch.square(diff_xy[:, 1])
+    return torch.exp(-dist_sq / (std**2))
+
     target_x = 0.0
     target_y = -1.0
     box_x = box_pos_w[:, 0]
@@ -320,6 +337,122 @@ def track_robot_head_to_box_before_x_minus05_exp(
     )
 
     return final_reward
+
+
+def track_robot_behind_box_toward_target_exp(
+    env: ManagerBasedRLEnv,
+    target_x: float = 0.0,
+    target_y: float = -1.0,
+    target_distance: float = 0.85,
+    std_longitudinal: float = 0.45,
+    std_lateral: float = 0.25,
+    activate_box_x_threshold: float = -0.5,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Before the box reaches the pit entry, reward the robot for moving to the
+    back side of the box relative to the box->target direction.
+    """
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_pos = box.data.root_pos_w[:, :2]
+    robot_pos = robot.data.root_pos_w[:, :2]
+    target_xy = _target_xy_like(box_pos, target_x=target_x, target_y=target_y)
+
+    push_dir = _safe_normalize_xy(target_xy - box_pos)
+    lateral_dir = torch.stack((-push_dir[:, 1], push_dir[:, 0]), dim=1)
+    desired_robot_xy = box_pos - target_distance * push_dir
+    pose_error_xy = robot_pos - desired_robot_xy
+
+    longitudinal_error = torch.sum(pose_error_xy * push_dir, dim=1)
+    lateral_error = torch.sum(pose_error_xy * lateral_dir, dim=1)
+
+    reward = torch.exp(-torch.square(longitudinal_error) / (std_longitudinal**2))
+    reward *= torch.exp(-torch.square(lateral_error) / (std_lateral**2))
+
+    box_x = box.data.root_pos_w[:, 0]
+    active_mask = box_x <= activate_box_x_threshold
+    return torch.where(active_mask, reward, torch.zeros_like(reward))
+
+
+def track_robot_heading_to_push_target_exp(
+    env: ManagerBasedRLEnv,
+    target_x: float = 0.0,
+    target_y: float = -1.0,
+    std_forward: float = 0.3,
+    std_lateral: float = 0.25,
+    close_dist: float = 1.4,
+    activate_box_x_threshold: float = -0.5,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Reward the robot for facing the box->target push direction once it is close
+    enough to the box to start a meaningful push.
+    """
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_pos = box.data.root_pos_w[:, :2]
+    robot_pos = robot.data.root_pos_w[:, :2]
+    target_xy = _target_xy_like(box_pos, target_x=target_x, target_y=target_y)
+
+    push_dir_xy = _safe_normalize_xy(target_xy - box_pos)
+    push_dir_w = torch.cat((push_dir_xy, torch.zeros_like(push_dir_xy[:, :1])), dim=1)
+    push_dir_body = quat_apply_inverse(yaw_quat(robot.data.root_quat_w), push_dir_w)
+
+    forward_reward = torch.exp(-torch.square(push_dir_body[:, 0] - 1.0) / (std_forward**2))
+    lateral_reward = torch.exp(-torch.square(push_dir_body[:, 1]) / (std_lateral**2))
+
+    robot_box_dist = torch.linalg.norm(robot_pos - box_pos, dim=1)
+    close_mask = robot_box_dist <= close_dist
+    box_x = box.data.root_pos_w[:, 0]
+    active_mask = torch.logical_and(box_x <= activate_box_x_threshold, close_mask)
+
+    reward = forward_reward * lateral_reward
+    return torch.where(active_mask, reward, torch.zeros_like(reward))
+
+
+def track_box_velocity_toward_target_exp(
+    env: ManagerBasedRLEnv,
+    target_x: float = 0.0,
+    target_y: float = -1.0,
+    speed_scale: float = 0.2,
+    std_lateral: float = 0.25,
+    robot_box_contact_dist: float = 1.3,
+    activate_box_x_threshold: float = -0.5,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Reward box motion toward the pit target and suppress sideways sliding.
+    """
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_pos = box.data.root_pos_w[:, :2]
+    robot_pos = robot.data.root_pos_w[:, :2]
+    target_xy = _target_xy_like(box_pos, target_x=target_x, target_y=target_y)
+
+    push_dir = _safe_normalize_xy(target_xy - box_pos)
+    lateral_dir = torch.stack((-push_dir[:, 1], push_dir[:, 0]), dim=1)
+    box_vel_xy = box.data.root_lin_vel_w[:, :2]
+
+    forward_speed = torch.sum(box_vel_xy * push_dir, dim=1)
+    lateral_speed = torch.sum(box_vel_xy * lateral_dir, dim=1)
+
+    forward_reward = 1.0 - torch.exp(-torch.clamp(forward_speed, min=0.0) / speed_scale)
+    lateral_reward = torch.exp(-torch.square(lateral_speed) / (std_lateral**2))
+
+    robot_box_dist = torch.linalg.norm(robot_pos - box_pos, dim=1)
+    contact_scale = torch.exp(-torch.square(robot_box_dist - 0.85) / (0.55**2))
+
+    box_x = box.data.root_pos_w[:, 0]
+    active_mask = torch.logical_and(box_x <= activate_box_x_threshold, robot_box_dist <= robot_box_contact_dist)
+    reward = forward_reward * lateral_reward * contact_scale
+    return torch.where(active_mask, reward, torch.zeros_like(reward))
 
 
 def joint_power(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
