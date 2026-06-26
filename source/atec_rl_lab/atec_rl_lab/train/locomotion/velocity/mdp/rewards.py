@@ -126,13 +126,17 @@ def track_box_x_target_exp(
     box_pos_w = box.data.root_pos_w  # [num_envs, 3] world坐标
     
     target_x = 0.0
+    target_y = -1.0
     box_x = box_pos_w[:, 0]
     box_y = box_pos_w[:, 1]
 
     # 1. X方向指数跟踪，std放大到1.8，远距离保留梯度
     x_error_sq = torch.square(box_x - target_x)
-    reward_base = torch.exp(-x_error_sq / (std ** 2))
+    reward_base_x = torch.exp(-x_error_sq / (std ** 2))
 
+    y_error_sq = torch.square(box_y - target_y)
+    reward_base_y = torch.exp(-y_error_sq / (std ** 2))
+    reward_base = reward_base_x + reward_base_y
     # 2. Y轴平滑衰减，替代硬掩码断崖惩罚（核心解决稀疏）
     y_upper_bound = 0.1
     y_lower_bound = -3.4
