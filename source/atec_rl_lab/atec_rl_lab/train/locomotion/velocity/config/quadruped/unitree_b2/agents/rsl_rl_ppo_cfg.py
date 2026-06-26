@@ -6,6 +6,12 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 
 
 @configclass
+class RslRlPpoActorCriticCNNCfg(RslRlPpoActorCriticCfg):
+    actor_cnn_cfg: dict | None = None
+    critic_cnn_cfg: dict | None = None
+
+
+@configclass
 class UnitreeB2RoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 20000
@@ -51,7 +57,7 @@ class UnitreeB2TaskBPPORunnerCfg(UnitreeB2RoughPPORunnerCfg):
     save_interval = 100
     experiment_name = "unitree_b2_taskb"
     obs_groups = {"policy": ["proprio", "extero", "image"], "critic": ["critic"]}
-    policy = RslRlPpoActorCriticCfg(
+    policy = RslRlPpoActorCriticCNNCfg(
         class_name="ActorCriticCNN",
         init_noise_std=0.6,
         actor_obs_normalization=False,
