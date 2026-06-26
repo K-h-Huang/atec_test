@@ -99,8 +99,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.scene.terrain.max_init_terrain_level = None
     # reduce the number of terrains to save memory
     if env_cfg.scene.terrain.terrain_generator is not None:
-        env_cfg.scene.terrain.terrain_generator.num_rows = 5
-        env_cfg.scene.terrain.terrain_generator.num_cols = 5
+        env_cfg.scene.terrain.terrain_generator.num_rows = 1
+        env_cfg.scene.terrain.terrain_generator.num_cols = 1
         env_cfg.scene.terrain.terrain_generator.curriculum = False
 
     # disable randomization for play
