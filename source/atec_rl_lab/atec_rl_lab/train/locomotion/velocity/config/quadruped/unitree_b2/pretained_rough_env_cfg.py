@@ -544,6 +544,16 @@ class RewardsCfg:
         params={"target_distance": 0.5},
         weight=12.0,
     )
+    early_box_contact_penalty = RewTerm(
+        func=mdp.penalize_box_contact_before_push_pose,
+        params={
+            "target_distance": 0.5,
+            "contact_distance": 0.85,
+            "good_longitudinal_tolerance": 0.5,
+            "good_lateral_tolerance": 0.5,
+        },
+        weight=-6.0,
+    )
     robot_push_heading = RewTerm(func=mdp.track_robot_heading_to_push_target_exp, weight=8.0)
     box_push_vel = RewTerm(func=mdp.track_box_velocity_toward_target_exp, weight=10.0)
     robot_goal_bonus = RewTerm(

@@ -377,6 +377,50 @@ def track_robot_behind_box_toward_target_exp(
     return torch.where(active_mask, reward, torch.zeros_like(reward))
 
 
+def penalize_box_contact_before_push_pose(
+    env: ManagerBasedRLEnv,
+    target_x: float = 0.0,
+    target_y: float = -1.0,
+    target_distance: float = 0.5,
+    contact_distance: float = 0.85,
+    good_longitudinal_tolerance: float = 0.25,
+    good_lateral_tolerance: float = 0.25,
+    activate_box_x_threshold: float = -0.5,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Penalize touching the box before the robot reaches a good pushing pose.
+    Once the robot is behind the box along the box->target direction, contact is allowed.
+    """
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_pos = box.data.root_pos_w[:, :2]
+    robot_pos = robot.data.root_pos_w[:, :2]
+    target_xy = _target_xy_like(box_pos, target_x=target_x, target_y=target_y)
+
+    push_dir = _safe_normalize_xy(target_xy - box_pos)
+    lateral_dir = torch.stack((-push_dir[:, 1], push_dir[:, 0]), dim=1)
+    desired_robot_xy = box_pos - target_distance * push_dir
+    pose_error_xy = robot_pos - desired_robot_xy
+
+    longitudinal_error = torch.abs(torch.sum(pose_error_xy * push_dir, dim=1))
+    lateral_error = torch.abs(torch.sum(pose_error_xy * lateral_dir, dim=1))
+    good_push_pose = torch.logical_and(
+        longitudinal_error <= good_longitudinal_tolerance,
+        lateral_error <= good_lateral_tolerance,
+    )
+
+    robot_box_dist = torch.linalg.norm(robot_pos - box_pos, dim=1)
+    close_to_box = robot_box_dist <= contact_distance
+
+    box_x = box.data.root_pos_w[:, 0]
+    active = box_x <= activate_box_x_threshold
+    bad_contact = torch.logical_and(active, torch.logical_and(close_to_box, torch.logical_not(good_push_pose)))
+    return bad_contact.to(robot_pos.dtype)
+
+
 def track_robot_heading_to_push_target_exp(
     env: ManagerBasedRLEnv,
     target_x: float = 0.0,
