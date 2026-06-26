@@ -33,6 +33,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from isaaclab.terrains.config.rough2 import ROUGH_TERRAINS_CFG  # isort: skip
 
 import atec_rl_lab.train.locomotion.velocity.mdp as mdp
+import atec_rl_lab.tasks.task_d.mdp as task_d_mdp
 
 from atec_rl_lab.assets import ATEC_ASSETS_MODEL_DIR
 from atec_rl_lab.tasks.task_d.terrain import TASK_D_TERRAIN_CFG, PitAndPlatformTerrainCfg
@@ -517,8 +518,32 @@ class RewardsCfg:
     # 箱子移动
     # track_pos_box_exp()
     box_pos = RewTerm(func=mdp.track_box_x_target_exp, weight=15.0)
+    box_into_pit_bonus = RewTerm(
+        func=task_d_mdp.RewardBoxXInRange,
+        params={
+            "asset_cfg": SceneEntityCfg("box"),
+            "x_min": -1.4,
+            "x_max": -0.7,
+            "reward_value": 20.0,
+            "one_time": True,
+            "debug": False,
+        },
+        weight=1.0,
+    )
     robot_pos = RewTerm(func=mdp.track_robot_x_when_box_past_minus_05_exp, weight=10.0)
     robot_pos2 = RewTerm(func=mdp.track_robot_close_to_box_before_x_minus05_exp, weight=10.0)
+    robot_head_pos = RewTerm(func=mdp.track_robot_head_to_box_before_x_minus05_exp, weight=8.0)
+    robot_goal_bonus = RewTerm(
+        func=task_d_mdp.RewardCrossX,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "threshold": [2.0],
+            "reward_value": [30.0],
+            "debug": False,
+            "visual_assets": False,
+        },
+        weight=1.0,
+    )
     action = RewTerm(func=mdp.action_xy_target_reg, weight=-0.8)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.5)
 

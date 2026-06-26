@@ -274,6 +274,50 @@ def track_robot_close_to_box_before_x_minus05_exp(
     return final_reward
 
 
+def track_robot_head_to_box_before_x_minus05_exp(
+    env: ManagerBasedRLEnv,
+    target_forward: float = 0.9,
+    std_forward: float = 0.6,
+    std_lateral: float = 0.25,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Stage1 reward: before box x > -0.5, reward the robot for approaching the box head-on.
+    The reward is highest when the box is in front of the robot in the robot yaw frame,
+    with a small lateral offset, discouraging side-on contact.
+    """
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_pos = box.data.root_pos_w
+    robot_pos = robot.data.root_pos_w
+
+    box_x = box_pos[:, 0]
+
+    rel_pos_w = box_pos - robot_pos
+    rel_pos_body = quat_apply_inverse(yaw_quat(robot.data.root_quat_w), rel_pos_w)
+
+    rel_x = rel_pos_body[:, 0]
+    rel_y = rel_pos_body[:, 1]
+
+    forward_reward = torch.exp(-torch.square(rel_x - target_forward) / (std_forward ** 2))
+    lateral_reward = torch.exp(-torch.square(rel_y) / (std_lateral ** 2))
+
+    # Only reward when the box is in front of the robot.
+    in_front_mask = rel_x > 0.0
+    reward_head_on = forward_reward * lateral_reward * in_front_mask.to(forward_reward.dtype)
+
+    box_not_passed_mask = box_x <= -0.5
+    final_reward = torch.where(
+        box_not_passed_mask,
+        reward_head_on,
+        torch.zeros_like(reward_head_on),
+    )
+
+    return final_reward
+
+
 def joint_power(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Reward joint_power"""
     # extract the used quantities (to enable type-hinting)
