@@ -19,7 +19,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers.manager_base import ManagerTermBase
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg, MultiMeshRayCasterCfg, RayCasterCfg, patterns
+from isaaclab.sensors import CameraCfg, ContactSensorCfg, MultiMeshRayCasterCfg, RayCasterCfg, patterns
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -448,6 +448,15 @@ def _build_default_object_cfg(index: int):
     return Banana_cfg([x, y, 0.10], [0.0, 0.0, -0.707, 0.707], f"Object{index}")
 
 
+def obs_ee_depth_chw(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg = SceneEntityCfg("ee_camera")) -> torch.Tensor:
+    depth = mdp.image(env, sensor_cfg=sensor_cfg, data_type="depth")
+    if depth.dim() == 3:
+        depth = depth.unsqueeze(-1)
+    if depth.dim() == 4 and depth.shape[-1] in (1, 3, 4):
+        depth = depth.permute(0, 3, 1, 2)
+    return depth.contiguous()
+
+
 @configclass
 class ActionsCfg:
     pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
@@ -470,6 +479,71 @@ class ActionsCfg:
 
 @configclass
 class ObservationsCfg:
+    @configclass
+    class ProprioObservationsCfg(ObsGroup):
+        base_lin_vel = ObsTerm(
+            func=mdp.base_lin_vel,
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel,
+            noise=Unoise(n_min=-0.2, n_max=0.2),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            noise=Unoise(n_min=-1.5, n_max=1.5),
+            clip=(-100.0, 100.0),
+            scale=1.0,
+        )
+        actions = ObsTerm(func=mdp.last_action, clip=(-100.0, 100.0), scale=1.0)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    @configclass
+    class ExteroObservationsCfg(ObsGroup):
+        lidar_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("lidar_sensor")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-1.0, 1.0),
+            scale=1.0,
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    @configclass
+    class ImageObservationsCfg(ObsGroup):
+        ee_depth = ObsTerm(
+            func=obs_ee_depth_chw,
+            params={"sensor_cfg": SceneEntityCfg("ee_camera")},
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
     @configclass
     class PolicyCfg(ObsGroup):
         base_lin_vel = ObsTerm(
@@ -560,6 +634,9 @@ class ObservationsCfg:
 
     policy: PolicyCfg = PolicyCfg()
     critic: CriticCfg = CriticCfg()
+    proprio: ProprioObservationsCfg = ProprioObservationsCfg()
+    extero: ExteroObservationsCfg = ExteroObservationsCfg()
+    image: ImageObservationsCfg = ImageObservationsCfg()
 
 
 @configclass
@@ -603,6 +680,19 @@ class MySceneCfg(InteractiveSceneCfg):
         max_distance=10.0,
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
+    )
+    ee_camera = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/gripper_base/ee_camera",
+        update_period=0.1,
+        height=480,
+        width=640,
+        data_types=["depth"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=15.0,
+            horizontal_aperture=20.955,
+            clipping_range=(0.05, 50.0),
+        ),
+        offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)),
     )
 
 
@@ -785,6 +875,19 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.observations.policy.joint_vel.params["asset_cfg"].joint_names = joint_names
         self.observations.critic.joint_pos.params["asset_cfg"].joint_names = joint_names
         self.observations.critic.joint_vel.params["asset_cfg"].joint_names = joint_names
+        self.observations.proprio.joint_pos.params["asset_cfg"].joint_names = joint_names
+        self.observations.proprio.joint_vel.params["asset_cfg"].joint_names = joint_names
+
+        base_path = "{ENV_REGEX_NS}/Robot"
+        ee_camera_link_name = getattr(UNITREE_B2_PIPER_CFG, "ee_camera_link_name", None)
+        ee_camera_offset = getattr(UNITREE_B2_PIPER_CFG, "ee_camera_offset", None)
+        if isinstance(ee_camera_link_name, str):
+            self.scene.ee_camera.prim_path = base_path + "/" + ee_camera_link_name + "/ee_camera"
+            if ee_camera_offset is not None:
+                self.scene.ee_camera.offset = ee_camera_offset
+        else:
+            self.scene.ee_camera = None
+            self.observations.image.ee_depth = None
 
         self.actions.joint_arm.joint_names = list(UNITREE_B2_PIPER_CFG.arm_joint_names)
         self.actions.pre_trained_policy_action.low_level_actions.joint_names = list(UNITREE_B2_PIPER_CFG.leg_joint_names)

@@ -50,12 +50,23 @@ class UnitreeB2TaskBPPORunnerCfg(UnitreeB2RoughPPORunnerCfg):
     max_iterations = 12000
     save_interval = 100
     experiment_name = "unitree_b2_taskb"
+    obs_groups = {"policy": ["proprio", "extero", "image"], "critic": ["critic"]}
     policy = RslRlPpoActorCriticCfg(
+        class_name="ActorCriticCNN",
         init_noise_std=0.6,
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
+        actor_cnn_cfg={
+            "output_channels": [16, 32, 64, 64],
+            "kernel_size": [8, 4, 3, 3],
+            "stride": [4, 2, 2, 2],
+            "padding": "zeros",
+            "activation": "elu",
+            "global_pool": "avg",
+            "flatten": True,
+        },
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
