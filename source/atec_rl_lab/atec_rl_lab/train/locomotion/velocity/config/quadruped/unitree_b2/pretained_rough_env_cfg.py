@@ -183,7 +183,7 @@ class ObservationsCfg:
         )
         height_scan = ObsTerm(
             func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("lidar_sensor")},
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
             scale=1.0,
         )
