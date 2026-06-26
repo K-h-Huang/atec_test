@@ -183,7 +183,7 @@ class ObservationsCfg:
         )
         height_scan = ObsTerm(
             func=mdp.height_scan,
-            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            params={"sensor_cfg": SceneEntityCfg("lidar_sensor")},
             clip=(-1.0, 1.0),
             scale=1.0,
         )
@@ -292,7 +292,13 @@ class MySceneCfg(InteractiveSceneCfg):
         ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
         debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
+        mesh_prim_paths=["/World/ground",
+                    #      MultiMeshRayCasterCfg.RaycastTargetCfg(
+                    #     prim_expr="{ENV_REGEX_NS}/Box",
+                    #     is_shared=True,
+                    #     track_mesh_transforms=True,
+                    # ),
+                    ],
     )
     height_scanner_base = RayCasterCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base",
@@ -524,7 +530,7 @@ class RewardsCfg:
             "asset_cfg": SceneEntityCfg("box"),
             "x_min": -1.4,
             "x_max": -0.7,
-            "reward_value": 20.0,
+            "reward_value": 200.0,
             "one_time": True,
             "debug": False,
         },

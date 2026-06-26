@@ -135,7 +135,7 @@ def track_box_x_target_exp(
     """
     box: RigidObject = env.scene[asset_cfg.name]
     box_pos_w = box.data.root_pos_w  # [num_envs, 3] world坐标
-    
+    # print(box_pos_w[:,2],"z")
     box_xy = box_pos_w[:, :2]
     target_xy = _target_xy_like(box_xy, target_x=0.0, target_y=-1.0)
     diff_xy = box_xy - target_xy
@@ -186,7 +186,7 @@ def track_robot_x_when_box_past_minus_05_exp(
     box: RigidObject = env.scene[box_asset_cfg.name]
     robot: RigidObject = env.scene[robot_asset_cfg.name]
 
-    box_x = box.data.root_pos_w[:, 0]
+    box_z = box.data.root_pos_w[:, 2]
     robot_x = robot.data.root_pos_w[:, 0]
     robot_target_x = 2.2
 
@@ -194,8 +194,8 @@ def track_robot_x_when_box_past_minus_05_exp(
     x_error_sq = torch.square(robot_x - robot_target_x)
     reward_base = torch.exp(-x_error_sq / (std ** 2))
 
-    # 2. 箱子x > -0.5才生效奖励，否则直接置0
-    box_pass_mask = box_x > -0.5
+    # 2. 箱子z < 0才生效奖励，否则直接置0
+    box_pass_mask = box_z < 0
     box_scale = torch.where(box_pass_mask, torch.ones_like(reward_base), torch.zeros_like(reward_base))
 
     # 最终奖励
