@@ -562,6 +562,9 @@ class RewardsCfg:
         params={
             "target_distance": 1.2,
             "contact_distance": 0.75,
+            "std_lateral": 0.18,
+            "std_aim": 0.25,
+            "max_lateral_error": 0.25,
             "min_approach_speed": 0.25,
         },
         weight=5.0,

@@ -466,8 +466,10 @@ def track_robot_runup_to_box_impact_exp(
     target_distance: float = 1.2,
     contact_distance: float = 0.75,
     std_distance: float = 0.35,
-    std_lateral: float = 0.3,
+    std_lateral: float = 0.18,
     std_heading: float = 0.35,
+    std_aim: float = 0.25,
+    max_lateral_error: float = 0.25,
     min_approach_speed: float = 0.2,
     speed_scale: float = 0.7,
     activate_box_x_threshold: float = -0.5,
@@ -500,17 +502,26 @@ def track_robot_runup_to_box_impact_exp(
     heading_reward = torch.exp(-torch.square(push_dir_body[:, 0] - 1.0) / (std_heading**2))
     heading_reward *= torch.exp(-torch.square(push_dir_body[:, 1]) / (std_heading**2))
 
+    robot_to_box_dir = _safe_normalize_xy(box_pos - robot_pos)
+    robot_to_box_dir_w = torch.cat((robot_to_box_dir, torch.zeros_like(robot_to_box_dir[:, :1])), dim=1)
+    robot_to_box_dir_body = quat_apply_inverse(yaw_quat(robot.data.root_quat_w), robot_to_box_dir_w)
+    aim_reward = torch.exp(-torch.square(robot_to_box_dir_body[:, 1]) / (std_aim**2))
+    aim_reward *= torch.clamp(robot_to_box_dir_body[:, 0], min=0.0, max=1.0)
+
     robot_vel_xy = robot.data.root_lin_vel_w[:, :2]
     approach_speed = torch.sum(robot_vel_xy * push_dir, dim=1)
-    robot_to_box_dir = _safe_normalize_xy(box_pos - robot_pos)
     closing_speed = torch.sum(robot_vel_xy * robot_to_box_dir, dim=1)
     impact_speed = torch.minimum(approach_speed, closing_speed)
     speed_reward = 1.0 - torch.exp(-torch.clamp(impact_speed - min_approach_speed, min=0.0) / speed_scale)
 
     box_x = box.data.root_pos_w[:, 0]
-    runup_mask = torch.logical_and(behind_distance >= contact_distance, impact_speed > min_approach_speed)
+    centered_mask = torch.abs(lateral_error) <= max_lateral_error
+    runup_mask = torch.logical_and(
+        torch.logical_and(behind_distance >= contact_distance, impact_speed > min_approach_speed),
+        centered_mask,
+    )
     active_mask = torch.logical_and(box_x <= activate_box_x_threshold, runup_mask)
-    reward = distance_reward * lateral_reward * heading_reward * speed_reward
+    reward = distance_reward * lateral_reward * heading_reward * aim_reward * speed_reward
     return torch.where(active_mask, reward, torch.zeros_like(reward))
 
 
