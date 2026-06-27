@@ -1,33 +1,31 @@
 import os
-import torch
 from typing import Any
 
-class AlgSolution:
+import torch
 
-    ACTION_SCALE = 0.5
-    EE_BODY_NAME_CANDIDATES = ("gripper_base", "piper_gripper_base")
-    ARM_JOINT_NAME_CANDIDATES = (
-        ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"],
-        ["arm_joint1", "arm_joint2", "arm_joint3", "arm_joint4", "arm_joint5", "arm_joint6"],
-    )
+
+class AlgSolution:
+    """Deploy the TaskD high-level velocity policy with the B2 low-level leg policy."""
+
+    LEG_ACTION_DIM = 12
+    ARM_ACTION_DIM = 8
+
+    LEG_JOINT_INDICES = list(range(12))
+    ARM_JOINT_INDICES = list(range(12, 20))
 
     def __init__(self):
-        policy_path = os.path.dirname(os.path.abspath(__file__)) + '/policy.pt'
-        policy_path = "/home/kh/hkh/code/competition/ATEC2026_Simulation_Challenge/scripts/demo(tq)/policy.pt"
-        print(policy_path,"-------------------")
-        # policy_path = "/home/kh/hkh/code/competition/ATEC2026_Simulation_Challenge/logs/rsl_rl/unitree_b2_rough/2026-06-23_06-01-31/exported/policy.pt" # os.path.dirname(os.path.abspath(__file__)) + '/model_19999.pt'
-        # policy_path = "./policy.pt" # os.path.dirname(os.path.abspath(__file__)) + '/model_19999.pt'
+        solution_dir = os.path.dirname(os.path.abspath(__file__))
 
-        self.device = 'cuda'
+        high_level_policy_path = os.path.join(solution_dir, "taske", "policy.pt")
+        low_level_policy_path = os.path.join(solution_dir, "policy.pt")
 
-        self.policy = torch.jit.load(policy_path, map_location=self.device)
-        self.policy.eval()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.leg_action_dim = 12
-        self.arm_action_dim = 8
+        self.high_level_policy = torch.jit.load(high_level_policy_path, map_location=self.device)
+        self.high_level_policy.eval()
 
-        self.leg_joint_indices = list(range(12))
-        self.arm_joint_indices = list(range(12, 20))
+        self.low_level_policy = torch.jit.load(low_level_policy_path, map_location=self.device)
+        self.low_level_policy.eval()
 
         self.train_to_env_action_scale = torch.tensor(
             [
@@ -51,171 +49,30 @@ class AlgSolution:
             dtype=torch.float32,
         ).view(1, -1)
 
-        # Fixed zero base velocity command for policy input.
-        self.fixed_velocity_commands = torch.tensor(
-            [4.0, 0.0, -0.01],
-            device=self.device,
-            dtype=torch.float32,
-        ).view(1, 3)
-
-        self.heading_hold_enabled = True
-        self.control_dt = 0.02
-        self.gyro_bias_samples = 100
-        self.yaw_kp = 1.2
-        self.yaw_kd = 0.15
-        self.max_yaw_rate_cmd = 0.8
-        self.max_yaw_correction = 0.6
-        self.slowdown_yaw_error = 0.35
-
-        self._gyro_bias_count = 0
-        self._gyro_z_bias = None
-        self._yaw_estimate = None
-        self._target_yaw = None
-
-        self.arm_default_action = torch.zeros(
-            (1, self.arm_action_dim),
-            device=self.device,
-            dtype=torch.float32,
-        )
-
+        self.last_velocity_commands = None
 
     def get_action_spec(self) -> dict[str, dict[str, Any]] | None:
         return {}
 
-    def _resolve_joint_ids(self, candidates: tuple[list[str], ...]) -> list[int]:
-        last_error = None
-        for names in candidates:
-            try:
-                ids, found_names = self.robot.find_joints(names)
-            except ValueError as err:
-                last_error = err
-                continue
-            if len(ids) == len(names):
-                if candidates is self.ARM_JOINT_NAME_CANDIDATES:
-                    self.arm_joint_names = list(found_names)
-                return list(ids)
-        raise ValueError(
-            f"Cannot resolve required joints from candidates: {candidates}. Last error: {last_error}"
-        )
-
-    def _resolve_ee_body_name(self) -> str:
-        last_error = None
-        for name in self.EE_BODY_NAME_CANDIDATES:
-            try:
-                body_ids, _ = self.robot.find_bodies(name)
-            except ValueError as err:
-                last_error = err
-                continue
-            if len(body_ids) == 1:
-                return name
-        raise ValueError(
-            f"Cannot resolve EE body from candidates: {self.EE_BODY_NAME_CANDIDATES}. Last error: {last_error}"
-        )
-
-    def _ensure_cartesian_targets(self):
-        self.cartesian_ctrl.reset()
-
-    def _compute_arm_overlay_action(self) -> torch.Tensor:
-        self._ensure_cartesian_targets()
-
-        arm_jpos_des = self.cartesian_ctrl.compute_base(
-            self.ee_pos_target_b,
-            self.ee_quat_target_b,
-        )
-
-        full_target = self.robot.data.joint_pos.clone()
-        full_target[:, self.arm_ids] = arm_jpos_des
-        full_target[:, self.gripper_ids] = self.gripper_open_pos.repeat(full_target.shape[0], 1)
-
-        return (full_target - self.default_joint_pos) / self.ACTION_SCALE
-    @staticmethod
-    def _wrap_to_pi(angle: torch.Tensor) -> torch.Tensor:
-        return torch.atan2(torch.sin(angle), torch.cos(angle))
-
-
-    def _ensure_heading_state(self, num_envs: int, dtype: torch.dtype):
-        state_shape = (num_envs,)
-        if self._yaw_estimate is None or self._yaw_estimate.shape[0] != num_envs:
-            self._gyro_bias_count = 0
-            self._gyro_z_bias = torch.zeros(state_shape, device=self.device, dtype=dtype)
-            self._yaw_estimate = torch.zeros(state_shape, device=self.device, dtype=dtype)
-            self._target_yaw = torch.zeros(state_shape, device=self.device, dtype=dtype)
-            return
-
-        self._gyro_z_bias = self._gyro_z_bias.to(device=self.device, dtype=dtype)
-        self._yaw_estimate = self._yaw_estimate.to(device=self.device, dtype=dtype)
-        self._target_yaw = self._target_yaw.to(device=self.device, dtype=dtype)
-
-
-    def _get_velocity_commands(self, proprio: torch.Tensor) -> torch.Tensor:
-        """Return fixed velocity commands for policy input."""
-        num_envs = proprio.shape[0]
-
-        cmd = self.fixed_velocity_commands.to(dtype=proprio.dtype, device=self.device)
-        if num_envs > 1:
-            cmd = cmd.repeat(num_envs, 1)
-        else:
-            cmd = cmd.clone()
-
-        if not self.heading_hold_enabled:
-            return cmd
-
-        self._ensure_heading_state(num_envs, proprio.dtype)
-
-        gyro_z_raw = proprio[:, 5]
-        if self._gyro_bias_count < self.gyro_bias_samples:
-            count = float(self._gyro_bias_count)
-            self._gyro_z_bias = (self._gyro_z_bias * count + gyro_z_raw) / (count + 1.0)
-            self._gyro_bias_count += 1
-            return cmd
-
-        desired_yaw_rate = cmd[:, 2].clone()
-        gyro_z = gyro_z_raw - self._gyro_z_bias
-        self._target_yaw = self._wrap_to_pi(
-            self._target_yaw + desired_yaw_rate * self.control_dt
-        )
-        self._yaw_estimate = self._wrap_to_pi(self._yaw_estimate + gyro_z * self.control_dt)
-
-        yaw_error = self._wrap_to_pi(self._target_yaw - self._yaw_estimate)
-        yaw_correction = self.yaw_kp * yaw_error - self.yaw_kd * gyro_z
-        yaw_correction = torch.clamp(
-            yaw_correction,
-            min=-self.max_yaw_correction,
-            max=self.max_yaw_correction,
-        )
-        # print("yaw_error:", yaw_error)
-        cmd[:, 2] = torch.clamp(
-            cmd[:, 2] + yaw_correction,
-            min=-self.max_yaw_rate_cmd,
-            max=self.max_yaw_rate_cmd,
-        )
-
-        yaw_error_abs = torch.abs(yaw_error)
-        slowdown = torch.clamp(
-            1.0 - yaw_error_abs / self.slowdown_yaw_error,
-            min=0.5,
-            max=1.0,
-        )
-        cmd[:, 0] = cmd[:, 0] * slowdown
-
-        # return cmd
-        return cmd
-
-    def _extract_policy_obs(self, obs, action_dim) -> torch.Tensor:
-        proprio = obs["proprio"].to(self.device)
-
-        expected_dim = 3 + 3 + 3 + 3 + action_dim + action_dim + action_dim
+    def _split_proprio(
+        self, proprio: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Split official B2Piper proprio into the leg parts used by the training configs."""
+        action_dim = (int(proprio.shape[-1]) - 12) // 3
+        if action_dim < self.LEG_ACTION_DIM:
+            raise ValueError(f"Expected at least {self.LEG_ACTION_DIM} action dims, got {action_dim}.")
 
         idx = 0
-        _base_lin_vel = proprio[:, idx:idx + 3]
-        idx += 3
+
+        has_base_lin_vel = proprio.shape[-1] == 12 + action_dim * 3
+        if has_base_lin_vel:
+            idx += 3
 
         base_ang_vel = proprio[:, idx:idx + 3]
         idx += 3
 
         _velocity_commands_env = proprio[:, idx:idx + 3]
         idx += 3
-        # print("_velocity_commands_env:", _velocity_commands_env)
 
         projected_gravity = proprio[:, idx:idx + 3]
         idx += 3
@@ -228,19 +85,51 @@ class AlgSolution:
 
         actions_all = proprio[:, idx:idx + action_dim]
 
-        joint_pos_leg = joint_pos_all[:, self.leg_joint_indices]
-        joint_vel_leg = joint_vel_all[:, self.leg_joint_indices]
-        actions_env_leg = actions_all[:, self.leg_joint_indices]
+        joint_pos_leg = joint_pos_all[:, self.LEG_JOINT_INDICES]
+        joint_vel_leg = joint_vel_all[:, self.LEG_JOINT_INDICES]
+        actions_env_leg = actions_all[:, self.LEG_JOINT_INDICES]
 
         actions_train_leg = actions_env_leg * self.env_to_train_action_scale.to(dtype=proprio.dtype)
-        velocity_commands = self._get_velocity_commands(proprio)
 
-        policy_obs = torch.cat(
+        return base_ang_vel, projected_gravity, joint_pos_leg, joint_vel_leg, actions_train_leg
+
+    def _get_last_velocity_commands(self, num_envs: int, dtype: torch.dtype) -> torch.Tensor:
+        if self.last_velocity_commands is None or self.last_velocity_commands.shape[0] != num_envs:
+            self.last_velocity_commands = torch.zeros((num_envs, 3), device=self.device, dtype=dtype)
+        return self.last_velocity_commands.to(device=self.device, dtype=dtype)
+
+    def _build_high_level_obs(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
+        proprio = obs["proprio"].to(self.device)
+        extero = obs.get("extero")
+
+        if extero is None:
+            raise KeyError("TaskD high-level policy was trained with extero lidar observations, but obs['extero'] is missing.")
+
+        base_ang_vel, projected_gravity, joint_pos_leg, joint_vel_leg, _actions_train_leg = self._split_proprio(proprio)
+        last_velocity_commands = self._get_last_velocity_commands(proprio.shape[0], proprio.dtype)
+        height_scan = torch.clamp(extero.to(self.device), min=-1.0, max=1.0)
+
+        return torch.cat(
+            [
+                base_ang_vel * 0.25,
+                projected_gravity,
+                joint_pos_leg,
+                joint_vel_leg * 0.05,
+                last_velocity_commands,
+                height_scan,
+            ],
+            dim=-1,
+        )
+
+    def _build_low_level_obs(self, obs: dict[str, torch.Tensor], velocity_commands: torch.Tensor) -> torch.Tensor:
+        proprio = obs["proprio"].to(self.device)
+        base_ang_vel, projected_gravity, joint_pos_leg, joint_vel_leg, actions_train_leg = self._split_proprio(proprio)
+
+        return torch.cat(
             [
                 base_ang_vel * 0.25,
                 projected_gravity,
                 velocity_commands,
-                # _velocity_commands_env,
                 joint_pos_leg,
                 joint_vel_leg * 0.05,
                 actions_train_leg,
@@ -248,13 +137,10 @@ class AlgSolution:
             dim=-1,
         )
 
-        return policy_obs
-
-    def _map_policy_action_to_env_action(self, action_train: torch.Tensor, action_dim: int) -> torch.Tensor:
-        """Map training-time 12D leg action to current env 20D full-body action."""
-        if action_train.shape[-1] != self.leg_action_dim:
+    def _map_low_level_action_to_env_action(self, action_train: torch.Tensor, action_dim: int) -> torch.Tensor:
+        if action_train.shape[-1] != self.LEG_ACTION_DIM:
             raise ValueError(
-                f"Policy output dim mismatch: got {action_train.shape[-1]}, expected {self.leg_action_dim}"
+                f"Low-level policy output dim mismatch: got {action_train.shape[-1]}, expected {self.LEG_ACTION_DIM}."
             )
 
         num_envs = action_train.shape[0]
@@ -265,34 +151,31 @@ class AlgSolution:
             device=self.device,
             dtype=torch.float32,
         )
+        action_env[:, self.LEG_JOINT_INDICES] = leg_action_env
 
-        action_env[:, self.leg_joint_indices] = leg_action_env
-        action_env[:, self.arm_joint_indices] = self.arm_default_action.repeat(num_envs, 1)
+        if action_dim >= self.LEG_ACTION_DIM + self.ARM_ACTION_DIM:
+            action_env[:, self.ARM_JOINT_INDICES] = 0.0
 
         return action_env
-    
+
     def predicts(self, obs, current_score):
-        """Run policy inference and return current-env full-body action."""
-        # if current_score > 1:
-        #     return {'action': [], 'giveup': True}
         proprio = obs["proprio"].to(self.device)
         action_dim = (int(proprio.shape[-1]) - 12) // 3
-        policy_obs = self._extract_policy_obs(obs, action_dim)
 
         with torch.inference_mode():
-            action_train = self.policy(policy_obs)
+            high_level_obs = self._build_high_level_obs(obs)
+            velocity_commands = self.high_level_policy(high_level_obs).to(device=self.device, dtype=torch.float32)
+            if velocity_commands.ndim == 1:
+                velocity_commands = velocity_commands.unsqueeze(0)
+            velocity_commands = torch.clamp(velocity_commands, min=-3.0, max=3.0)
 
-        if not isinstance(action_train, torch.Tensor):
-            action_train = torch.as_tensor(
-                action_train, device=self.device, dtype=torch.float32
-            )
+            low_level_obs = self._build_low_level_obs(obs, velocity_commands)
+            low_level_action = self.low_level_policy(low_level_obs)
+            if low_level_action.ndim == 1:
+                low_level_action = low_level_action.unsqueeze(0)
 
-        action_train = action_train.to(device=self.device, dtype=torch.float32)
+            action_env = self._map_low_level_action_to_env_action(low_level_action.to(dtype=torch.float32), action_dim)
 
-        if action_train.ndim == 1:
-            action_train = action_train.unsqueeze(0)
+        self.last_velocity_commands = velocity_commands.detach()
 
-        action_env = self._map_policy_action_to_env_action(action_train, action_dim)
-        action_env = action_env.cpu().numpy().tolist()
-        return {'action': action_env, 'giveup': False}
-
+        return {"action": action_env.cpu().numpy().tolist(), "giveup": False}

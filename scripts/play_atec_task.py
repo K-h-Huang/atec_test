@@ -56,7 +56,7 @@ from rl_utils import camera_follow
 from atec_rl_lab.tasks.task_base.action_base import apply_safe_action_spec
 
 # from demo.solution import AlgSolution
-from demo.solution_rl import AlgSolution
+from demo.solution_taskd import AlgSolution
 solution = AlgSolution()
 
 def play() -> tuple[float, float]:
@@ -126,7 +126,7 @@ def play() -> tuple[float, float]:
             if giveup:
                 break
             actions = resp["action"]
-            actions = torch.tensor(actions, dtype=torch.float32, device='cuda').view(1, -1)
+            actions = torch.tensor(actions, dtype=torch.float32, device=args_cli.device).view(1, -1)
             obs, reward, terminated, truncated, info = env.step(actions)
             if not is_task_e:
                 camera_follow(env)
