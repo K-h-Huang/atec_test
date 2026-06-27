@@ -555,7 +555,24 @@ class RewardsCfg:
         weight=-6.0,
     )
     robot_push_heading = RewTerm(func=mdp.track_robot_heading_to_push_target_exp, weight=8.0)
-    box_push_vel = RewTerm(func=mdp.track_box_velocity_toward_target_exp, weight=10.0)
+    robot_runup_impact = RewTerm(
+        func=mdp.track_robot_runup_to_box_impact_exp,
+        params={
+            "target_distance": 1.2,
+            "contact_distance": 0.75,
+            "min_approach_speed": 0.25,
+        },
+        weight=5.0,
+    )
+    box_push_vel = RewTerm(func=mdp.track_box_velocity_toward_target_exp, weight=12.0)
+    slow_box_contact_penalty = RewTerm(
+        func=mdp.penalize_slow_box_contact_without_progress,
+        params={
+            "contact_distance": 0.75,
+            "box_speed_threshold": 0.06,
+        },
+        weight=-3.0,
+    )
     robot_goal_bonus = RewTerm(
         func=task_d_mdp.RewardCrossX,
         params={

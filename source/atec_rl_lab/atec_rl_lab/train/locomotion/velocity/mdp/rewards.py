@@ -459,6 +459,89 @@ def track_robot_heading_to_push_target_exp(
     return torch.where(active_mask, reward, torch.zeros_like(reward))
 
 
+def track_robot_runup_to_box_impact_exp(
+    env: ManagerBasedRLEnv,
+    target_x: float = 0.0,
+    target_y: float = -1.0,
+    target_distance: float = 1.2,
+    contact_distance: float = 0.75,
+    std_distance: float = 0.35,
+    std_lateral: float = 0.3,
+    std_heading: float = 0.35,
+    min_approach_speed: float = 0.2,
+    speed_scale: float = 0.7,
+    activate_box_x_threshold: float = -0.5,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """
+    Reward a short, aligned run-up before impact instead of slow static pushing.
+    The robot should be behind the box, face the box->target direction, and move forward.
+    """
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_pos = box.data.root_pos_w[:, :2]
+    robot_pos = robot.data.root_pos_w[:, :2]
+    target_xy = _target_xy_like(box_pos, target_x=target_x, target_y=target_y)
+
+    push_dir = _safe_normalize_xy(target_xy - box_pos)
+    lateral_dir = torch.stack((-push_dir[:, 1], push_dir[:, 0]), dim=1)
+    robot_from_box = robot_pos - box_pos
+
+    behind_distance = -torch.sum(robot_from_box * push_dir, dim=1)
+    lateral_error = torch.sum(robot_from_box * lateral_dir, dim=1)
+
+    distance_reward = torch.exp(-torch.square(behind_distance - target_distance) / (std_distance**2))
+    lateral_reward = torch.exp(-torch.square(lateral_error) / (std_lateral**2))
+
+    push_dir_w = torch.cat((push_dir, torch.zeros_like(push_dir[:, :1])), dim=1)
+    push_dir_body = quat_apply_inverse(yaw_quat(robot.data.root_quat_w), push_dir_w)
+    heading_reward = torch.exp(-torch.square(push_dir_body[:, 0] - 1.0) / (std_heading**2))
+    heading_reward *= torch.exp(-torch.square(push_dir_body[:, 1]) / (std_heading**2))
+
+    robot_vel_xy = robot.data.root_lin_vel_w[:, :2]
+    approach_speed = torch.sum(robot_vel_xy * push_dir, dim=1)
+    robot_to_box_dir = _safe_normalize_xy(box_pos - robot_pos)
+    closing_speed = torch.sum(robot_vel_xy * robot_to_box_dir, dim=1)
+    impact_speed = torch.minimum(approach_speed, closing_speed)
+    speed_reward = 1.0 - torch.exp(-torch.clamp(impact_speed - min_approach_speed, min=0.0) / speed_scale)
+
+    box_x = box.data.root_pos_w[:, 0]
+    runup_mask = torch.logical_and(behind_distance >= contact_distance, impact_speed > min_approach_speed)
+    active_mask = torch.logical_and(box_x <= activate_box_x_threshold, runup_mask)
+    reward = distance_reward * lateral_reward * heading_reward * speed_reward
+    return torch.where(active_mask, reward, torch.zeros_like(reward))
+
+
+def penalize_slow_box_contact_without_progress(
+    env: ManagerBasedRLEnv,
+    target_x: float = 0.0,
+    target_y: float = -1.0,
+    contact_distance: float = 0.75,
+    box_speed_threshold: float = 0.06,
+    activate_box_x_threshold: float = -0.5,
+    box_asset_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+    robot_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize lingering near-contact when the box is not moving toward the target."""
+    box: RigidObject = env.scene[box_asset_cfg.name]
+    robot: RigidObject = env.scene[robot_asset_cfg.name]
+
+    box_pos = box.data.root_pos_w[:, :2]
+    robot_pos = robot.data.root_pos_w[:, :2]
+    target_xy = _target_xy_like(box_pos, target_x=target_x, target_y=target_y)
+    push_dir = _safe_normalize_xy(target_xy - box_pos)
+
+    robot_box_dist = torch.linalg.norm(robot_pos - box_pos, dim=1)
+    box_forward_speed = torch.sum(box.data.root_lin_vel_w[:, :2] * push_dir, dim=1)
+
+    box_x = box.data.root_pos_w[:, 0]
+    active_mask = box_x <= activate_box_x_threshold
+    slow_contact = torch.logical_and(robot_box_dist <= contact_distance, box_forward_speed < box_speed_threshold)
+    return torch.logical_and(active_mask, slow_contact).to(robot_pos.dtype)
+
+
 def track_box_velocity_toward_target_exp(
     env: ManagerBasedRLEnv,
     target_x: float = 0.0,
