@@ -489,7 +489,7 @@ class EventCfg:
                 "pitch": (-0.5, 0.5),
                 "yaw": (-0.5, 0.5),
             },
-            "eval_box_spawn_probability": 0.5,
+            "eval_box_spawn_probability": 1.0,
             "eval_box_offset": (0.0, 1.6, 0.0),
         },
     )

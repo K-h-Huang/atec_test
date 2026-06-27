@@ -56,7 +56,9 @@ from rl_utils import camera_follow
 from atec_rl_lab.tasks.task_base.action_base import apply_safe_action_spec
 
 # from demo.solution import AlgSolution
-from demo.solution_taskd import AlgSolution
+# from demo.solution_taskd import AlgSolution
+from demo_taskd.solution import AlgSolution
+
 solution = AlgSolution()
 
 def play() -> tuple[float, float]:

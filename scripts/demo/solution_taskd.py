@@ -16,8 +16,10 @@ class AlgSolution:
     def __init__(self):
         solution_dir = os.path.dirname(os.path.abspath(__file__))
 
-        high_level_policy_path = os.path.join(solution_dir, "taske", "policy.pt")
-        low_level_policy_path = os.path.join(solution_dir, "policy.pt")
+
+
+        high_level_policy_path =  "/home/kh/hkh/code/new_amp_test/legged_lab/logs/nas_log/unitree_b2_rough/2026-06-27_02-43-33/exported/policy.pt" # os.path.join(solution_dir, "taske", "policy.pt")
+        low_level_policy_path =  "/home/kh/hkh/code/competition/ATEC2026_Simulation_Challenge/scripts/demo(tq)/policy.pt" #os.path.join(solution_dir, "policy.pt")
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -165,6 +167,7 @@ class AlgSolution:
         with torch.inference_mode():
             high_level_obs = self._build_high_level_obs(obs)
             velocity_commands = self.high_level_policy(high_level_obs).to(device=self.device, dtype=torch.float32)
+            print("velocity_commands:", velocity_commands)
             if velocity_commands.ndim == 1:
                 velocity_commands = velocity_commands.unsqueeze(0)
             velocity_commands = torch.clamp(velocity_commands, min=-3.0, max=3.0)
