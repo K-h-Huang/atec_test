@@ -372,6 +372,8 @@ def reset_root_state_uniform_with_box3(
     velocity_range: dict[str, tuple[float, float]],
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     asset_cfg_box: SceneEntityCfg = SceneEntityCfg("box"),
+    eval_box_spawn_probability: float = 0.0,
+    eval_box_offset: tuple[float, float, float] = (0.0, 1.6, 0.0),
 
 ):
     """Reset the asset root state to a random position and velocity uniformly within the given ranges.
@@ -402,6 +404,16 @@ def reset_root_state_uniform_with_box3(
     num_pit = len(pit_env_ids)
     num_nonpit = len(non_pit_env_ids)
 
+    def apply_eval_box_spawn(positions_box: torch.Tensor, robot_positions: torch.Tensor) -> torch.Tensor:
+        if eval_box_spawn_probability <= 0.0 or positions_box.shape[0] == 0:
+            return positions_box
+
+        eval_mask = torch.rand(positions_box.shape[0], device=asset.device) < eval_box_spawn_probability
+        eval_offset = torch.tensor(eval_box_offset, device=asset.device, dtype=positions_box.dtype)
+        positions_box = positions_box.clone()
+        positions_box[eval_mask] = robot_positions[eval_mask] + eval_offset
+        return positions_box
+
     # ---------------------- Pit environments ----------------------
     if num_pit > 0:
         root_states = asset.data.default_root_state[pit_env_ids].clone()
@@ -424,6 +436,7 @@ def reset_root_state_uniform_with_box3(
         positions_box = positions.clone()
         positions_box[:, 0] += box_offset_x + box_rand_pit[:, 0]
         positions_box[:, 1] += box_offset_y + box_rand_pit[:, 1]
+        positions_box = apply_eval_box_spawn(positions_box, positions)
 
         asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=pit_env_ids)
         asset_box.write_root_velocity_to_sim(velocities, env_ids=pit_env_ids)   
@@ -467,6 +480,7 @@ def reset_root_state_uniform_with_box3(
         positions_box = positions.clone()
         positions_box[:, 0] += box_offset_x + box_rand_samples[:, 0]
         positions_box[:, 1] += box_offset_y + box_rand_samples[:, 1]
+        positions_box = apply_eval_box_spawn(positions_box, positions)
 
         asset_box.write_root_pose_to_sim(torch.cat([positions_box, orientations], dim=-1), env_ids=non_pit_env_ids)
         asset_box.write_root_velocity_to_sim(velocities, env_ids=non_pit_env_ids)

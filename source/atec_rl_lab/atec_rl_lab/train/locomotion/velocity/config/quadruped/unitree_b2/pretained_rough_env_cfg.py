@@ -489,6 +489,8 @@ class EventCfg:
                 "pitch": (-0.5, 0.5),
                 "yaw": (-0.5, 0.5),
             },
+            "eval_box_spawn_probability": 0.5,
+            "eval_box_offset": (0.0, 1.6, 0.0),
         },
     )
 
@@ -744,6 +746,8 @@ class UnitreeB2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "pitch": (-0.5, 0.5),
                 "yaw": (-0.5, 0.5),
             },
+            "eval_box_spawn_probability": 0.5,
+            "eval_box_offset": (0.0, 1.6, 0.0),
         }
         self.events.randomize_rigid_body_mass_base.params["asset_cfg"].body_names = [self.base_link_name]
         self.events.randomize_rigid_body_mass_others.params["asset_cfg"].body_names = [
