@@ -321,7 +321,7 @@ def track_robot_head_to_box_before_x_minus05_exp(
 
     rel_x = rel_pos_body[:, 0]
     rel_y = rel_pos_body[:, 1]
-
+    # print(rel_x,"rel_x")
     forward_reward = torch.exp(-torch.square(rel_x - target_forward) / (std_forward ** 2))
     lateral_reward = torch.exp(-torch.square(rel_y) / (std_lateral ** 2))
 
