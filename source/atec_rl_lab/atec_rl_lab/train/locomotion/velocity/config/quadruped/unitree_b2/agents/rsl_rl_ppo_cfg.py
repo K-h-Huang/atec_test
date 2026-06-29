@@ -42,3 +42,11 @@ class UnitreeB2FlatPPORunnerCfg(UnitreeB2RoughPPORunnerCfg):
 
         self.max_iterations = 5000
         self.experiment_name = "unitree_b2_flat"
+
+@configclass
+class UnitreeB2TaskAPPORunnerCfg(UnitreeB2RoughPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "unitree_b2_task_a"
+
