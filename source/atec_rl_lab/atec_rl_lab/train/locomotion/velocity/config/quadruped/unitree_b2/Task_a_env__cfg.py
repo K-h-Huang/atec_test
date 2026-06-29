@@ -119,7 +119,7 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformThresholdVelocityCommandCfg.Ranges(
-            lin_vel_x=(-2.0, 2.0),
+            lin_vel_x=(-2.0, 4.0),
             lin_vel_y=(-2.0, 2.0),
             ang_vel_z=(-1.5, 1.5),
             heading=(-math.pi, math.pi),
@@ -349,20 +349,10 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms with the rough B2 weights written directly."""
 
-    is_terminated = RewTerm(func=mdp.is_terminated, weight=0.0)
 
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.1)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
-    base_height_l2 = RewTerm(
-        func=mdp.base_height_l2,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=[BASE_LINK_NAME]),
-            "sensor_cfg": SceneEntityCfg("height_scanner_base"),
-            "target_height": 0.53,
-        },
-    )
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.3)
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.15)
+
     body_lin_acc_l2 = RewTerm(
         func=mdp.body_lin_acc_l2,
         weight=0.0,
@@ -374,11 +364,7 @@ class RewardsCfg:
         weight=-1e-5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
     )
-    joint_vel_l2 = RewTerm(
-        func=mdp.joint_vel_l2,
-        weight=0.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
-    )
+
     joint_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
         weight=-1e-7,
@@ -386,7 +372,7 @@ class RewardsCfg:
     )
     joint_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-5.0,
+        weight=-5.5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
     )
     joint_vel_limits = RewTerm(
@@ -401,7 +387,7 @@ class RewardsCfg:
     )
     stand_still = RewTerm(
         func=mdp.stand_still,
-        weight=-2.0,
+        weight=-2.2,
         params={
             "command_name": "base_velocity",
             "command_threshold": 0.1,
@@ -421,7 +407,7 @@ class RewardsCfg:
     )
     joint_mirror = RewTerm(
         func=mdp.joint_mirror,
-        weight=-0.1,
+        weight=-0.2,
         params={
             "asset_cfg": SceneEntityCfg("robot"),
             "mirror_joints": [
@@ -430,32 +416,9 @@ class RewardsCfg:
             ],
         },
     )
-    action_mirror = RewTerm(
-        func=mdp.action_mirror,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "mirror_joints": [["FR.*", "RL.*"], ["FL.*", "RR.*"]],
-        },
-    )
-    action_sync = RewTerm(
-        func=mdp.action_sync,
-        weight=0.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "joint_groups": [
-                ["FR_hip_joint", "FL_hip_joint", "RL_hip_joint", "RR_hip_joint"],
-                ["FR_thigh_joint", "FL_thigh_joint", "RL_thigh_joint", "RR_thigh_joint"],
-                ["FR_calf_joint", "FL_calf_joint", "RL_calf_joint", "RR_calf_joint"],
-            ],
-        },
-    )
 
-    applied_torque_limits = RewTerm(
-        func=mdp.applied_torque_limits,
-        weight=0.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
-    )
+
+
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
 
     undesired_contacts = RewTerm(
