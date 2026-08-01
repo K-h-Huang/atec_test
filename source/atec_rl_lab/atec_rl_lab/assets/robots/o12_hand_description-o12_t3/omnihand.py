@@ -1,6 +1,6 @@
 """Isaac Lab configuration for the OmniHand Pro left hand.
 
-Joint limits and motor limits are read directly from the URDF.  The PD gains
+Joint limits and motor limits are defined from the official MJCF model.  The PD gains
 match the official OmniHand Pro MuJoCo model so that proximal joints, especially
 the thumb abduction joint, can hold their pose while downstream joints move.
 """
@@ -8,67 +8,90 @@ the thumb abduction joint, can hold their pose while downstream joints move.
 from __future__ import annotations
 
 import os
-import xml.etree.ElementTree as ET
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 
-OMNIHAND_URDF_PATH = os.path.join(
+OMNIHAND_MJCF_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "assets",
-    "urdf",
-    "omnihand_pro_left.urdf",
+    "MJCF",
+    "omnihand_pro_left_isaaclab.xml",
 )
 
 ACTION_SCALE = 1.0
 ACTION_OFFSET = 0.0
 
 
-def _read_urdf_joint_parameters(urdf_path: str) -> tuple[dict[str, float], dict[str, float], set[str]]:
-    """Return effort limits, velocity limits and mimic joints from a URDF."""
-    root = ET.parse(urdf_path).getroot()
-    effort_limits: dict[str, float] = {}
-    velocity_limits: dict[str, float] = {}
-    mimic_joints: set[str] = set()
-
-    for joint in root.findall("joint"):
-        if joint.get("type") not in {"revolute", "continuous", "prismatic"}:
-            continue
-
-        name = joint.get("name")
-        limit = joint.find("limit")
-        if not name or limit is None:
-            raise ValueError(f"Actuated joint in {urdf_path!r} is missing its name or limit element")
-
-        effort = limit.get("effort")
-        velocity = limit.get("velocity")
-        if effort is None or velocity is None:
-            raise ValueError(f"Joint {name!r} is missing effort or velocity in {urdf_path!r}")
-
-        effort_limits[name] = float(effort)
-        velocity_limits[name] = float(velocity)
-        if joint.find("mimic") is not None:
-            mimic_joints.add(name)
-
-    return effort_limits, velocity_limits, mimic_joints
-
-
-OMNIHAND_EFFORT_LIMITS, OMNIHAND_VELOCITY_LIMITS, OMNIHAND_MIMIC_JOINTS = (
-    _read_urdf_joint_parameters(OMNIHAND_URDF_PATH)
+OMNIHAND_JOINT_NAMES = (
+    "L_thumb_roll_joint",
+    "L_thumb_abad_joint",
+    "L_thumb_mcp_joint",
+    "L_thumb_pip_joint",
+    "L_thumb_dip_joint",
+    "L_index_abad_joint",
+    "L_index_mcp_joint",
+    "L_index_pip_joint",
+    "L_index_dip_joint",
+    "L_middle_abad_joint",
+    "L_middle_mcp_joint",
+    "L_middle_pip_joint",
+    "L_middle_dip_joint",
+    "L_ring_mcp_joint",
+    "L_ring_pip_joint",
+    "L_ring_dip_joint",
+    "L_pinky_mcp_joint",
+    "L_pinky_pip_joint",
+    "L_pinky_dip_joint",
 )
-OMNIHAND_JOINT_NAMES = tuple(OMNIHAND_EFFORT_LIMITS)
-OMNIHAND_ACTION_JOINT_NAMES = tuple(
-    name for name in OMNIHAND_JOINT_NAMES if name not in OMNIHAND_MIMIC_JOINTS
+
+# MJCF equality constraints drive these passive joints indirectly.
+OMNIHAND_ACTION_JOINT_NAMES = (
+    "L_thumb_roll_joint",
+    "L_thumb_abad_joint",
+    "L_thumb_mcp_joint",
+    "L_thumb_pip_joint",
+    "L_index_abad_joint",
+    "L_index_mcp_joint",
+    "L_index_pip_joint",
+    "L_middle_abad_joint",
+    "L_middle_mcp_joint",
+    "L_middle_pip_joint",
+    "L_ring_mcp_joint",
+    "L_pinky_mcp_joint",
 )
+
 OMNIHAND_ACTION_EFFORT_LIMITS = {
-    name: OMNIHAND_EFFORT_LIMITS[name] for name in OMNIHAND_ACTION_JOINT_NAMES
-}
-OMNIHAND_ACTION_VELOCITY_LIMITS = {
-    name: OMNIHAND_VELOCITY_LIMITS[name] for name in OMNIHAND_ACTION_JOINT_NAMES
+    "L_thumb_roll_joint": 0.134,
+    "L_thumb_abad_joint": 0.317,
+    "L_thumb_mcp_joint": 0.8,
+    "L_thumb_pip_joint": 0.92,
+    "L_index_abad_joint": 1.0,
+    "L_index_mcp_joint": 0.42,
+    "L_index_pip_joint": 0.216,
+    "L_middle_abad_joint": 1.0,
+    "L_middle_mcp_joint": 0.413,
+    "L_middle_pip_joint": 0.136,
+    "L_ring_mcp_joint": 0.444,
+    "L_pinky_mcp_joint": 0.444,
 }
 
+OMNIHAND_ACTION_VELOCITY_LIMITS = {
+    "L_thumb_roll_joint": 2.38,
+    "L_thumb_abad_joint": 2.33,
+    "L_thumb_mcp_joint": 1.35,
+    "L_thumb_pip_joint": 1.87,
+    "L_index_abad_joint": 2.49,
+    "L_index_mcp_joint": 2.49,
+    "L_index_pip_joint": 2.49,
+    "L_middle_abad_joint": 2.49,
+    "L_middle_mcp_joint": 2.49,
+    "L_middle_pip_joint": 2.49,
+    "L_ring_mcp_joint": 2.62,
+    "L_pinky_mcp_joint": 2.62,
+}
 # These values match the official assets/MJCF/omnihand_pro_left.xml actuators.
 OMNIHAND_STIFFNESS = {
     "L_thumb_roll_joint": 100.0,
@@ -101,13 +124,12 @@ OMNIHAND_DAMPING = {
 
 
 OMNIHAND_CFG = ArticulationCfg(
-    spawn=sim_utils.UrdfFileCfg(
-        asset_path=OMNIHAND_URDF_PATH,
-        force_usd_conversion=True,
+    spawn=sim_utils.MjcfFileCfg(
+        asset_path=OMNIHAND_MJCF_PATH,
         fix_base=False,
-        replace_cylinders_with_capsules=False,
-        merge_fixed_joints=False,
-        activate_contact_sensors=True,
+        import_inertia_tensor=True,
+        import_sites=True,
+        self_collision=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
             retain_accelerations=False,
@@ -122,15 +144,9 @@ OMNIHAND_CFG = ArticulationCfg(
             solver_position_iteration_count=8,
             solver_velocity_iteration_count=4,
         ),
-        joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
-            gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
-                stiffness=0.0,
-                damping=0.0,
-            )
-        ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.0),
+        pos=(0.0, 0.1, 0.0),
         joint_pos={".*": 0.0},
         joint_vel={".*": 0.0},
     ),

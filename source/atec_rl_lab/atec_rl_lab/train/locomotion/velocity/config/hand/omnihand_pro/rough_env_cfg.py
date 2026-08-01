@@ -40,7 +40,7 @@ class OmniHandProRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.viewer.env_index = 0
         self.scene.robot = OMNIHAND_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",
-            init_state=OMNIHAND_CFG.init_state.replace(pos=(0.0, 0.0, 0.008)),
+            init_state=OMNIHAND_CFG.init_state.replace(pos=(0.0, 0.1, 0.008)),
         )
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
