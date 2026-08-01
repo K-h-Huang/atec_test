@@ -13,6 +13,11 @@ parser.add_argument("--hold_time", type=float, default=1.0, help="Seconds to hol
 parser.add_argument("--restore_time", type=float, default=0.5, help="Seconds to hold the restored pose.")
 parser.add_argument("--cycles", type=int, default=0, help="Number of full cycles. Zero repeats until the app closes.")
 parser.add_argument("--free_base", action="store_true", help="Leave the palm base free instead of fixing it in space.")
+parser.add_argument(
+    "--enable_self_collisions",
+    action="store_true",
+    help="Enable collisions between OmniHand links. They are disabled by default for collision diagnosis.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -41,7 +46,12 @@ class OmniHandJointTestSceneCfg(InteractiveSceneCfg):
     )
     robot = OMNIHAND_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
-        spawn=OMNIHAND_CFG.spawn.replace(fix_base=not args_cli.free_base),
+        spawn=OMNIHAND_CFG.spawn.replace(
+            fix_base=not args_cli.free_base,
+            articulation_props=OMNIHAND_CFG.spawn.articulation_props.replace(
+                enabled_self_collisions=args_cli.enable_self_collisions,
+            ),
+        ),
         init_state=OMNIHAND_CFG.init_state.replace(pos=(0.0, 0.0, 0.01)),
     )
 
@@ -97,6 +107,7 @@ def main():
     print("Controlled joints:", joint_names)
     print("Requested angle:", args_cli.joint_angle_deg, "degrees")
     print("Base mode:", "free" if args_cli.free_base else "fixed")
+    print("Self collisions:", "enabled" if args_cli.enable_self_collisions else "disabled")
 
     if not step_target(robot, scene, sim, default_target, 1.0):
         return
