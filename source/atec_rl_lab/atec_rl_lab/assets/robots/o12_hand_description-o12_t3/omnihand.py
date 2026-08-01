@@ -1,20 +1,12 @@
 """Isaac Lab configuration for the OmniHand Pro left hand.
 
-Joint limits are read directly from the URDF.  The actuator parameters use the
-heuristic described in the supplied reference:
-
-    kp = I * omega**2
-    kd = 2 * I * zeta * omega
-    action_scale = 0.25 * effort_limit / kp
-
-With action_scale=1, natural frequency=10 Hz and damping ratio=2, these
-relations determine stiffness, damping and armature from each URDF effort
-limit.
+Joint limits and motor limits are read directly from the URDF.  The PD gains
+match the official OmniHand Pro MuJoCo model so that proximal joints, especially
+the thumb abduction joint, can hold their pose while downstream joints move.
 """
 
 from __future__ import annotations
 
-import math
 import os
 import xml.etree.ElementTree as ET
 
@@ -32,8 +24,6 @@ OMNIHAND_URDF_PATH = os.path.join(
 
 ACTION_SCALE = 1.0
 ACTION_OFFSET = 0.0
-NATURAL_FREQUENCY_HZ = 10.0
-DAMPING_RATIO = 2.0
 
 
 def _read_urdf_joint_parameters(urdf_path: str) -> tuple[dict[str, float], dict[str, float], set[str]]:
@@ -79,21 +69,34 @@ OMNIHAND_ACTION_VELOCITY_LIMITS = {
     name: OMNIHAND_VELOCITY_LIMITS[name] for name in OMNIHAND_ACTION_JOINT_NAMES
 }
 
-# alpha = 0.25 * tau_max / kp, with alpha (action scale) fixed to 1.
+# These values match the official assets/MJCF/omnihand_pro_left.xml actuators.
 OMNIHAND_STIFFNESS = {
-    name: 0.25 * OMNIHAND_EFFORT_LIMITS[name] / ACTION_SCALE
-    for name in OMNIHAND_ACTION_JOINT_NAMES
-}
-
-# omega is angular natural frequency in rad/s.
-_OMEGA = 2.0 * math.pi * NATURAL_FREQUENCY_HZ
-OMNIHAND_ARMATURE = {
-    name: stiffness / (_OMEGA**2)
-    for name, stiffness in OMNIHAND_STIFFNESS.items()
+    "L_thumb_roll_joint": 100.0,
+    "L_thumb_abad_joint": 100.0,
+    "L_thumb_mcp_joint": 100.0,
+    "L_thumb_pip_joint": 100.0,
+    "L_index_abad_joint": 100.0,
+    "L_index_mcp_joint": 100.0,
+    "L_index_pip_joint": 150.0,
+    "L_middle_abad_joint": 100.0,
+    "L_middle_mcp_joint": 100.0,
+    "L_middle_pip_joint": 150.0,
+    "L_ring_mcp_joint": 150.0,
+    "L_pinky_mcp_joint": 150.0,
 }
 OMNIHAND_DAMPING = {
-    name: 2.0 * OMNIHAND_ARMATURE[name] * DAMPING_RATIO * _OMEGA
-    for name in OMNIHAND_ACTION_JOINT_NAMES
+    "L_thumb_roll_joint": 0.2,
+    "L_thumb_abad_joint": 0.2,
+    "L_thumb_mcp_joint": 0.2,
+    "L_thumb_pip_joint": 0.1,
+    "L_index_abad_joint": 0.2,
+    "L_index_mcp_joint": 0.2,
+    "L_index_pip_joint": 0.15,
+    "L_middle_abad_joint": 0.2,
+    "L_middle_mcp_joint": 0.2,
+    "L_middle_pip_joint": 0.15,
+    "L_ring_mcp_joint": 0.15,
+    "L_pinky_mcp_joint": 0.15,
 }
 
 
@@ -139,7 +142,6 @@ OMNIHAND_CFG = ArticulationCfg(
             velocity_limit_sim=OMNIHAND_ACTION_VELOCITY_LIMITS,
             stiffness=OMNIHAND_STIFFNESS,
             damping=OMNIHAND_DAMPING,
-            armature=OMNIHAND_ARMATURE,
             friction=0.0,
             dynamic_friction=0.0,
             viscous_friction=0.0,

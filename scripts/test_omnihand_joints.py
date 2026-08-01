@@ -9,7 +9,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Test each OmniHand Pro joint in sequence.")
 parser.add_argument("--move_time", type=float, default=1.0, help="Seconds used to move to or from the target.")
 parser.add_argument("--hold_time", type=float, default=1.0, help="Seconds to hold the rotated joint.")
-parser.add_argument("--restore_time", type=float, default=0.5, help="Seconds to hold the restored pose.")
+parser.add_argument("--restore_time", type=float, default=1.0, help="Seconds to hold the restored pose.")
 parser.add_argument("--cycles", type=int, default=0, help="Number of full cycles. Zero repeats until the app closes.")
 parser.add_argument("--free_base", action="store_true", help="Leave the palm base free instead of fixing it in space.")
 parser.add_argument(
