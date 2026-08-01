@@ -7,6 +7,7 @@ from atec_rl_lab.assets.robots.piper import PIPER_CFG
 from .tron1a import TRON1A_WHEEL_CFG, TRON1A_PIPER_CFG
 from .tron2a import TRON2A_LEGGED_CFG, TRON2A_WHEEL_CFG
 from .cfg import ATECArticulationCfg
+from .omnihand_pro import OMNIHAND_CFG
 
 ROBOTS = {
     "b2": UNITREE_B2_CFG,
@@ -19,6 +20,7 @@ ROBOTS = {
     "tron1a_piper": TRON1A_PIPER_CFG,
     "tron2a_legged": TRON2A_LEGGED_CFG,
     "tron2a_wheel": TRON2A_WHEEL_CFG,
+    "omnihand_pro": OMNIHAND_CFG,
 }
 
 __all__ = [
@@ -33,4 +35,5 @@ __all__ = [
     "TRON2A_LEGGED_CFG",
     "TRON2A_WHEEL_CFG",
     "ROBOTS",
+    "OMNIHAND_CFG",
 ]

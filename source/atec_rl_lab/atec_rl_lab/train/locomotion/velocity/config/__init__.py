@@ -3,3 +3,4 @@
 """Configurations for velocity-based locomotion environments."""
 
 from .quadruped import *
+from .hand import *
