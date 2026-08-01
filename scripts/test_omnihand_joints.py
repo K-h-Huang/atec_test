@@ -1,4 +1,4 @@
-"""Cycle through OmniHand Pro joints and return each one to its default pose."""
+"""Move each actuated OmniHand Pro joint through its limits and restore its default pose."""
 
 import argparse
 import math
@@ -7,7 +7,6 @@ from isaaclab.app import AppLauncher
 
 
 parser = argparse.ArgumentParser(description="Test each OmniHand Pro joint in sequence.")
-parser.add_argument("--joint_angle_deg", type=float, default=20.0, help="Requested joint rotation in degrees.")
 parser.add_argument("--move_time", type=float, default=1.0, help="Seconds used to move to or from the target.")
 parser.add_argument("--hold_time", type=float, default=1.0, help="Seconds to hold the rotated joint.")
 parser.add_argument("--restore_time", type=float, default=0.5, help="Seconds to hold the restored pose.")
@@ -105,14 +104,12 @@ def main():
     print("-" * 100)
     print("OmniHand Pro joint test")
     print("Controlled joints:", joint_names)
-    print("Requested angle:", args_cli.joint_angle_deg, "degrees")
     print("Base mode:", "free" if args_cli.free_base else "fixed")
     print("Self collisions:", "enabled" if args_cli.enable_self_collisions else "disabled")
 
     if not step_target(robot, scene, sim, default_target, 1.0):
         return
 
-    requested_angle = math.radians(abs(args_cli.joint_angle_deg))
     completed_cycles = 0
 
     while simulation_app.is_running() and (args_cli.cycles <= 0 or completed_cycles < args_cli.cycles):
@@ -120,35 +117,30 @@ def main():
             if not simulation_app.is_running():
                 return
 
-            lower = robot.data.soft_joint_pos_limits[0, joint_id, 0].item()
-            upper = robot.data.soft_joint_pos_limits[0, joint_id, 1].item()
-            default_position = default_target[0, joint_id].item()
-            positive_range = max(0.0, upper - default_position)
-            negative_range = max(0.0, default_position - lower)
+            lower = robot.data.joint_pos_limits[0, joint_id, 0].item()
+            upper = robot.data.joint_pos_limits[0, joint_id, 1].item()
 
-            if positive_range >= negative_range:
-                direction = 1.0
-                available_range = positive_range
-            else:
-                direction = -1.0
-                available_range = negative_range
+            lower_target = default_target.clone()
+            lower_target[:, joint_id] = lower
+            upper_target = default_target.clone()
+            upper_target[:, joint_id] = upper
 
-            actual_angle = min(requested_angle, 0.8 * available_range)
-            if actual_angle <= 1.0e-5:
-                print(f"Skipping {joint_name}: no available motion from the default position.")
-                continue
+            print(
+                f"Testing {joint_name}: lower={lower:.6f} rad ({math.degrees(lower):+.2f} deg), "
+                f"upper={upper:.6f} rad ({math.degrees(upper):+.2f} deg), "
+                f"default={default_target[0, joint_id].item():.6f} rad "
+                f"({math.degrees(default_target[0, joint_id].item()):+.2f} deg)"
+            )
 
-            rotated_target = default_target.clone()
-            rotated_target[:, joint_id] = default_position + direction * actual_angle
-            signed_angle_deg = math.degrees(direction * actual_angle)
-            print(f"Moving {joint_name}: {default_position:.3f} rad -> {rotated_target[0, joint_id]:.3f} rad "
-                  f"({signed_angle_deg:+.1f} deg)")
-
-            if not move_target(robot, scene, sim, default_target, rotated_target, args_cli.move_time):
+            if not move_target(robot, scene, sim, default_target, lower_target, args_cli.move_time):
                 return
-            if not step_target(robot, scene, sim, rotated_target, args_cli.hold_time):
+            if not step_target(robot, scene, sim, lower_target, args_cli.hold_time):
                 return
-            if not move_target(robot, scene, sim, rotated_target, default_target, args_cli.move_time):
+            if not move_target(robot, scene, sim, lower_target, upper_target, args_cli.move_time):
+                return
+            if not step_target(robot, scene, sim, upper_target, args_cli.hold_time):
+                return
+            if not move_target(robot, scene, sim, upper_target, default_target, args_cli.move_time):
                 return
             if not step_target(robot, scene, sim, default_target, args_cli.restore_time):
                 return
