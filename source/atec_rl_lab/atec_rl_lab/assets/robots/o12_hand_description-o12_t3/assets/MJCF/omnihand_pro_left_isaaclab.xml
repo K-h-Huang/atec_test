@@ -1,4 +1,4 @@
 <mujoco model="omnihand_pro_left_isaaclab">
-  <include file="omnihand_pro_asset.xml" />
+  <include file="omnihand_pro_left_asset.xml" />
   <include file="omnihand_pro_left.xml" />
 </mujoco>

@@ -88,7 +88,7 @@
                 type="box"
                 size="0.004 0.008 0.012" group="3" />
               <geom class="plastic_visual" mesh="index_dip" />
-              <geom class="plastic_collision" mesh="finger_tip" />
+              <geom class="plastic_collision" mesh="index_tip_col" />
               <body name="L_index_tip" pos="-0.01465 0 0.02533">
                 <geom size="0.001" contype="0" conaffinity="0" group="3" />
               </body>
@@ -128,7 +128,7 @@
               <joint name="L_middle_dip_joint" pos="0 0 0" axis="0 1 0" range="0 1.31"
                 class="hand_joint" damping="0.15"/>
               <geom class="plastic_visual" mesh="middle_dip" />
-              <geom class="plastic_collision" mesh="finger_tip" />
+              <geom class="plastic_collision" mesh="middle_tip_col" />
               <body name="L_middle_tip" pos="-0.01465 0 0.02533">
                 <geom size="0.001" contype="0" conaffinity="0" group="3" />
               </body>
@@ -162,7 +162,7 @@
             <joint name="L_ring_dip_joint" pos="0 0 0" axis="0 1 0" range="0 1.31"
               class="hand_joint" damping="0.15"/>
             <geom class="plastic_visual" mesh="ring_dip" />
-            <geom class="plastic_collision" mesh="finger_tip" />
+            <geom class="plastic_collision" mesh="ring_tip_col" />
             <body name="L_ring_tip" pos="-0.01465 0 0.02533">
               <geom size="0.001" contype="0" conaffinity="0" group="3" />
             </body>
@@ -175,16 +175,16 @@
           diaginertia="5.45577e-07 5.41638e-07 1.7485e-07" />
         <joint name="L_pinky_mcp_joint" pos="0 0 0" axis="0 1 0" range="0 1.38"
           class="hand_joint" damping="0.15"/>
-        <geom class="plastic_visual" mesh="ring_mcp" />
-        <geom class="plastic_collision" mesh="ring_mcp_col" />
+        <geom class="plastic_visual" mesh="pinky_mcp" />
+        <geom class="plastic_collision" mesh="pinky_mcp_col" />
         <body name="L_pinky_pip_link" pos="-0.0039371 0 0.03983">
           <inertial pos="0.000940341 1.66668e-05 0.0134216"
             quat="0.999942 0.000103876 -0.0107411 -3.34326e-05" mass="0.00477953"
             diaginertia="2.25818e-07 1.61876e-07 1.1765e-07" />
           <joint name="L_pinky_pip_joint" pos="0 0 0" axis="0 1 0" range="0 1.57"
             class="hand_joint" damping="0.15"/>
-          <geom class="plastic_visual" mesh="ring_pip" />
-          <geom class="plastic_collision" mesh="ring_pip_col" />
+          <geom class="plastic_visual" mesh="pinky_pip" />
+          <geom class="plastic_collision" mesh="pinky_pip_col" />
           <body name="L_pinky_dip_link" pos="0.006162 0 0.026407">
             <site name="L_pinky_tactile_sit" pos="-0.006 0 0.017" quat="0 -0.3826834 0 0.9238795"
               type="box"
@@ -194,8 +194,8 @@
               diaginertia="6.74102e-07 6.33662e-07 2.43671e-07" />
             <joint name="L_pinky_dip_joint" pos="0 0 0" axis="0 1 0" range="0 1.31"
               class="hand_joint" damping="0.15"/>
-            <geom class="plastic_visual" mesh="ring_dip" />
-            <geom class="plastic_collision" mesh="finger_tip" />
+            <geom class="plastic_visual" mesh="pinky_dip" />
+            <geom class="plastic_collision" mesh="pinky_tip_col" />
             <body name="L_pinky_tip" pos="-0.01465 0 0.02533">
               <geom size="0.001" contype="0" conaffinity="0" group="3" />
             </body>
