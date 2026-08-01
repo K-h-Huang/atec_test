@@ -100,6 +100,7 @@ OMNIHAND_DAMPING = {
 OMNIHAND_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
         asset_path=OMNIHAND_URDF_PATH,
+        force_usd_conversion=True,
         fix_base=False,
         replace_cylinders_with_capsules=False,
         merge_fixed_joints=False,

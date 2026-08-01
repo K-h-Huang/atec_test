@@ -34,6 +34,10 @@ class OmniHandProRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         self.scene.env_spacing = 1.0
         self.scene.terrain.max_init_terrain_level = 1
+        self.viewer.eye = (0.35, 0.35, 0.25)
+        self.viewer.lookat = (0.0, 0.0, 0.04)
+        self.viewer.origin_type = "env"
+        self.viewer.env_index = 0
         self.scene.robot = OMNIHAND_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",
             init_state=OMNIHAND_CFG.init_state.replace(pos=(0.0, 0.0, 0.008)),
