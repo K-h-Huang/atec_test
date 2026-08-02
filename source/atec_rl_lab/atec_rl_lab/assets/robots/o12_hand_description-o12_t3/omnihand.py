@@ -1,8 +1,8 @@
 """Isaac Lab configuration for the OmniHand Pro left hand.
 
-Joint limits and motor limits are read from the URDF. The PD gains stay aligned with
-the official OmniHand Pro model so proximal joints, especially the thumb abduction
-joint, can hold their pose while downstream joints move.
+Joint limits and motor limits are read directly from the URDF.  The PD gains
+match the official OmniHand Pro MuJoCo model so that proximal joints, especially
+the thumb abduction joint, can hold their pose while downstream joints move.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 OMNIHAND_URDF_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "assets",
-    "urdf_mesh_col",
+    "urdf",
     "omnihand_pro_left.urdf",
 )
 
@@ -69,7 +69,7 @@ OMNIHAND_ACTION_VELOCITY_LIMITS = {
     name: OMNIHAND_VELOCITY_LIMITS[name] for name in OMNIHAND_ACTION_JOINT_NAMES
 }
 
-# These values match the official OmniHand Pro actuator settings.
+# These values match the official assets/MJCF/omnihand_pro_left.xml actuators.
 OMNIHAND_STIFFNESS = {
     "L_thumb_roll_joint": 100.0,
     "L_thumb_abad_joint": 100.0,

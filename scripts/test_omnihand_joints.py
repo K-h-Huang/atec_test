@@ -51,7 +51,7 @@ class OmniHandJointTestSceneCfg(InteractiveSceneCfg):
                 enabled_self_collisions=args_cli.enable_self_collisions,
             ),
         ),
-        init_state=OMNIHAND_CFG.init_state.replace(pos=(0.0, 0.1, 0.01)),
+        init_state=OMNIHAND_CFG.init_state.replace(pos=(0.0, 0.0, 0.01)),
     )
 
 
