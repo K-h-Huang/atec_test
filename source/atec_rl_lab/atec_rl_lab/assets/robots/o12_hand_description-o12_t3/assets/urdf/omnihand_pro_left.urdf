@@ -81,12 +81,12 @@
       <mass value="0.00527730022012764"/>
       <inertia ixx="5.13938107714071e-07" ixy="-2.10724699229959e-09" ixz="1.0099134807133e-08" iyy="3.23678037229255e-07" iyz="6.91586588373309e-08" izz="2.43364847603047e-07"/>
     </inertial>
-    <collision>
+    <!-- <collision>
       <origin rpy="0 0 0.9" xyz="0 0 0"/>
       <geometry>
         <box size="0.035 0.006 0.02"/>
       </geometry>
-    </collision>
+    </collision> -->
   </link>
   <joint name="L_thumb_abad_joint" type="revolute">
     <origin rpy="3.1415926 1.0996 3.1415926" xyz="0.029071 0 -0.0033014"/>
